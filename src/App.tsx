@@ -15,6 +15,14 @@ import NewChalani from "@/pages/NewChalani";
 import ChalaniDetail from "@/pages/ChalaniDetail";
 import Organization from "@/pages/Organization";
 import UserManagement from "@/pages/UserManagement";
+import FileTracking from "@/pages/FileTracking";
+import Search from "@/pages/Search";
+import Templates from "@/pages/Templates";
+import Reports from "@/pages/Reports";
+import AuditLogs from "@/pages/AuditLogs";
+import Notifications from "@/pages/Notifications";
+import Settings from "@/pages/Settings";
+import Profile from "@/pages/Profile";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,16 +49,14 @@ const App = () => {
                 <Route path="/chalani/:id" element={<ChalaniDetail />} />
                 <Route path="/organization" element={<Organization />} />
                 <Route path="/users" element={<UserManagement />} />
-                
-                {/* Placeholder routes */}
-                <Route path="/files" element={<PlaceholderPage title="File Tracking" />} />
-                <Route path="/search" element={<PlaceholderPage title="Search" />} />
-                <Route path="/templates" element={<PlaceholderPage title="Templates" />} />
-                <Route path="/reports" element={<PlaceholderPage title="Reports" />} />
-                <Route path="/audit" element={<PlaceholderPage title="Audit Logs" />} />
-                <Route path="/settings" element={<PlaceholderPage title="Settings" />} />
-                <Route path="/notifications" element={<PlaceholderPage title="Notifications" />} />
-                <Route path="/profile" element={<PlaceholderPage title="Profile" />} />
+                <Route path="/files" element={<FileTracking />} />
+                <Route path="/search" element={<Search />} />
+                <Route path="/templates" element={<Templates />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/audit" element={<AuditLogs />} />
+                <Route path="/notifications" element={<Notifications />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/profile" element={<Profile />} />
               </Route>
 
               {/* Redirect root to dashboard */}
@@ -65,15 +71,5 @@ const App = () => {
     </QueryClientProvider>
   );
 };
-
-// Placeholder component for routes not yet built
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-      <h1 className="text-2xl font-bold mb-2">{title}</h1>
-      <p className="text-muted-foreground">This module is coming soon.</p>
-    </div>
-  );
-}
 
 export default App;
