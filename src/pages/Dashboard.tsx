@@ -2,7 +2,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { mockDashboardStats, mockDartaLetters, mockNotifications } from '@/lib/mock-data';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useWorkflowStats, useMyTasks, useNotificationList } from '@/hooks';
 import {
   Inbox,
   Send,
@@ -11,13 +12,35 @@ import {
   Clock,
   ArrowRight,
   TrendingUp,
+  RefreshCw,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const stats = mockDashboardStats;
+  
+  // Fetch workflow stats
+  const { 
+    data: stats, 
+    isLoading: statsLoading, 
+    refetch: refetchStats 
+  } = useWorkflowStats();
+  
+  // Fetch pending tasks
+  const { 
+    data: tasksData, 
+    isLoading: tasksLoading 
+  } = useMyTasks({ status: 'pending' });
+  
+  // Fetch SLA alerts
+  const { 
+    data: notificationsData, 
+    isLoading: notificationsLoading 
+  } = useNotificationList({ 
+    page_size: 10,
+    type: 'sla_warning' 
+  });
 
   const formatRole = (role: string) => {
     return role
@@ -26,8 +49,12 @@ export default function Dashboard() {
       .join(' ');
   };
 
-  const recentTasks = mockDartaLetters.filter(d => d.status !== 'closed').slice(0, 5);
-  const urgentNotifications = mockNotifications.filter(n => n.type === 'sla_warning' || n.type === 'sla_breach');
+  const recentTasks = tasksData?.results?.slice(0, 5) || [];
+  const urgentNotifications = notificationsData?.results?.filter(
+    n => n.type === 'sla_warning' || n.type === 'sla_breach'
+  ) || [];
+
+  const isLoading = statsLoading || tasksLoading || notificationsLoading;
 
   return (
     <div className="space-y-6">
@@ -40,6 +67,15 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => refetchStats()}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           <Button onClick={() => navigate('/darta/new')}>
             <Inbox className="mr-2 h-4 w-4" />
             New Darta
@@ -59,10 +95,18 @@ export default function Dashboard() {
             <Inbox className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalDarta}</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-primary font-medium">{stats.pendingDarta}</span> pending review
-            </p>
+            {statsLoading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats?.total_darta || 0}</div>
+                <p className="text-xs text-muted-foreground">
+                  <span className="text-primary font-medium">
+                    {stats?.darta_by_status?.pending || 0}
+                  </span> pending review
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -72,10 +116,18 @@ export default function Dashboard() {
             <Send className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalChalani}</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-primary font-medium">{stats.pendingChalani}</span> in progress
-            </p>
+            {statsLoading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats?.total_chalani || 0}</div>
+                <p className="text-xs text-muted-foreground">
+                  <span className="text-primary font-medium">
+                    {stats?.chalani_by_status?.pending || 0}
+                  </span> in progress
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -85,23 +137,41 @@ export default function Dashboard() {
             <AlertTriangle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">{stats.overdueTasks}</div>
-            <p className="text-xs text-muted-foreground">
-              Requires immediate attention
-            </p>
+            {statsLoading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-destructive">
+                  {stats?.overdue_tasks || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Requires immediate attention
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed This Week</CardTitle>
+            <CardTitle className="text-sm font-medium">Completed Today</CardTitle>
             <TrendingUp className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.completedThisWeek}</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">+12%</span> from last week
-            </p>
+            {statsLoading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-green-600">
+                  {stats?.completed_today || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  <span className="text-primary font-medium">
+                    {stats?.pending_tasks || 0}
+                  </span> tasks pending
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -121,7 +191,18 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {recentTasks.length === 0 ? (
+              {tasksLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3">
+                    <Skeleton className="h-2 w-2 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                    <Skeleton className="h-6 w-16" />
+                  </div>
+                ))
+              ) : recentTasks.length === 0 ? (
                 <div className="text-center py-6 text-muted-foreground">
                   <CheckCircle2 className="mx-auto h-8 w-8 mb-2 text-green-600" />
                   <p>No pending tasks!</p>
@@ -131,7 +212,7 @@ export default function Dashboard() {
                   <div
                     key={task.id}
                     className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/darta/${task.id}`)}
+                    onClick={() => navigate(`/darta/${task.document_id}`)}
                   >
                     <div className="flex items-start gap-3">
                       <div className={`mt-0.5 h-2 w-2 rounded-full ${
@@ -141,13 +222,20 @@ export default function Dashboard() {
                       <div>
                         <p className="text-sm font-medium line-clamp-1">{task.subject}</p>
                         <p className="text-xs text-muted-foreground">
-                          {task.dartaNumber} • {task.senderOrg}
+                          {task.document_number} • From: {task.from_user?.name || 'System'}
                         </p>
                       </div>
                     </div>
-                    <Badge variant={task.status === 'pending' ? 'secondary' : 'outline'}>
-                      {task.status.replace('_', ' ')}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      {task.is_overdue && (
+                        <Badge variant="destructive" className="text-xs">
+                          Overdue
+                        </Badge>
+                      )}
+                      <Badge variant="secondary">
+                        {task.priority}
+                      </Badge>
+                    </div>
                   </div>
                 ))
               )}
@@ -169,7 +257,17 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {urgentNotifications.length === 0 ? (
+              {notificationsLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3">
+                    <Skeleton className="h-4 w-4 mt-0.5" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-full" />
+                    </div>
+                  </div>
+                ))
+              ) : urgentNotifications.length === 0 ? (
                 <div className="text-center py-6 text-muted-foreground">
                   <CheckCircle2 className="mx-auto h-8 w-8 mb-2 text-green-600" />
                   <p>No SLA alerts!</p>
@@ -178,13 +276,25 @@ export default function Dashboard() {
                 urgentNotifications.map((notification) => (
                   <div
                     key={notification.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20"
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      notification.type === 'sla_breach' 
+                        ? 'border-destructive/50 bg-destructive/10 hover:bg-destructive/20' 
+                        : 'border-amber-200 bg-amber-50 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/20'
+                    }`}
+                    onClick={() => notification.linkTo && navigate(notification.linkTo)}
                   >
-                    <Clock className="h-4 w-4 text-amber-600 mt-0.5" />
-                    <div>
+                    {notification.type === 'sla_breach' ? (
+                      <AlertTriangle className="h-4 w-4 text-destructive mt-0.5" />
+                    ) : (
+                      <Clock className="h-4 w-4 text-amber-600 mt-0.5" />
+                    )}
+                    <div className="flex-1">
                       <p className="text-sm font-medium">{notification.title}</p>
                       <p className="text-xs text-muted-foreground">{notification.message}</p>
                     </div>
+                    {!notification.isRead && (
+                      <div className="h-2 w-2 rounded-full bg-primary" />
+                    )}
                   </div>
                 ))
               )}
@@ -192,6 +302,44 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Quick Stats Summary */}
+      {stats && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick Summary</CardTitle>
+            <CardDescription>SLA compliance and workload overview</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-4">
+              <div className="text-center p-4 rounded-lg bg-muted/50">
+                <div className="text-3xl font-bold text-primary">
+                  {stats.pending_tasks || 0}
+                </div>
+                <p className="text-sm text-muted-foreground">Pending Tasks</p>
+              </div>
+              <div className="text-center p-4 rounded-lg bg-muted/50">
+                <div className="text-3xl font-bold text-green-600">
+                  {stats.completed_today || 0}
+                </div>
+                <p className="text-sm text-muted-foreground">Completed Today</p>
+              </div>
+              <div className="text-center p-4 rounded-lg bg-muted/50">
+                <div className="text-3xl font-bold text-amber-600">
+                  {stats.overdue_tasks || 0}
+                </div>
+                <p className="text-sm text-muted-foreground">Overdue</p>
+              </div>
+              <div className="text-center p-4 rounded-lg bg-muted/50">
+                <div className="text-3xl font-bold text-destructive">
+                  {stats.sla_breaches_this_week || 0}
+                </div>
+                <p className="text-sm text-muted-foreground">SLA Breaches (Week)</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

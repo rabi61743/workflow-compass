@@ -7,6 +7,10 @@ interface WorkflowStats {
   completed_today: number;
   overdue_tasks: number;
   sla_breaches_this_week: number;
+  total_darta?: number;
+  total_chalani?: number;
+  darta_by_status?: Record<string, number>;
+  chalani_by_status?: Record<string, number>;
 }
 
 interface TaskItem {
