@@ -128,3 +128,9 @@ class CurrentUserSerializer(serializers.ModelSerializer):
     
     def get_permissions(self, obj):
         return list(obj.module_permissions.values('module', 'action'))
+
+
+class LoginSerializer(serializers.Serializer):
+    """Serializer for login request."""
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)

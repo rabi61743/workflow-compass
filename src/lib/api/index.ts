@@ -12,3 +12,11 @@ export { workflowApi } from './workflow';
 export type { TaskItem, WorkflowStats } from './workflow';
 export { notificationsApi } from './notifications';
 export type { NotificationPreferences } from './notifications';
+export { paperlessApi } from './paperless';
+export type { 
+  PaperlessDocument, 
+  PaperlessCorrespondent, 
+  PaperlessDocumentType, 
+  PaperlessTag,
+  PaperlessStatistics 
+} from './paperless';
