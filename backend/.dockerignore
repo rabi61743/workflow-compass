@@ -1,0 +1,54 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environments
+venv
+.venv
+env
+.env
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Testing
+.coverage
+htmlcov
+.pytest_cache
+
+# Build
+*.egg-info
+dist
+build
+
+# Logs
+*.log
+
+# Local settings
+.env
+.env.local
+
+# Media and static (generated)
+media/*
+staticfiles/*
+!media/.gitkeep
+!staticfiles/.gitkeep
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile*
+.dockerignore
+
+# Misc
+*.md
+LICENSE
