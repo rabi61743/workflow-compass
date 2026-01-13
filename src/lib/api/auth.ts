@@ -10,7 +10,7 @@ interface LoginRequest {
 interface LoginResponse {
   access: string;
   refresh: string;
-  user: User;
+  user: any; // API user format
 }
 
 interface TokenRefreshResponse {
@@ -18,7 +18,7 @@ interface TokenRefreshResponse {
 }
 
 export const authApi = {
-  async login(credentials: LoginRequest): Promise<{ user: User }> {
+  async login(credentials: LoginRequest): Promise<{ user: any }> {
     const response = await apiClient.post<LoginResponse>('/auth/login/', credentials);
     const { access, refresh, user } = response.data;
     
@@ -34,12 +34,12 @@ export const authApi = {
     }
   },
 
-  async getCurrentUser(): Promise<User | null> {
+  async getCurrentUser(): Promise<any | null> {
     const token = apiClient.getAccessToken();
     if (!token) return null;
 
     try {
-      const response = await apiClient.get<User>('/auth/me/');
+      const response = await apiClient.get<any>('/auth/me/');
       return response.data;
     } catch {
       apiClient.clearTokens();

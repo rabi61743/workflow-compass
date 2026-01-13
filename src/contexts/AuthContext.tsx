@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { User, UserRole } from '@/lib/types';
-import { mockUsers } from '@/lib/mock-data';
+import { authApi, apiClient } from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -14,49 +14,77 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Transform API user to frontend User type
+function transformUser(apiUser: any): User {
+  return {
+    id: apiUser.id,
+    email: apiUser.email,
+    name: apiUser.name,
+    designation: apiUser.designation || '',
+    role: apiUser.roles?.[0] || 'general_staff',
+    officeId: apiUser.office || '',
+    officeName: apiUser.office_name || '',
+    avatar: apiUser.avatar,
+    permissions: (apiUser.permissions || []).map((p: any) => ({
+      module: p.module,
+      actions: [p.action]
+    })),
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Check for existing session on mount
   useEffect(() => {
-    const storedUser = localStorage.getItem('wms_user');
-    if (storedUser) {
+    const checkAuth = async () => {
       try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        localStorage.removeItem('wms_user');
+        const token = apiClient.getAccessToken();
+        if (token) {
+          const apiUser = await authApi.getCurrentUser();
+          if (apiUser) {
+            setUser(transformUser(apiUser));
+          }
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        apiClient.clearTokens();
+      } finally {
+        setIsLoading(false);
       }
-    }
-    setIsLoading(false);
+    };
+
+    checkAuth();
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-    // Mock authentication - in production, this would call Django API
-    const foundUser = mockUsers.find(
-      u => u.email.toLowerCase() === email.toLowerCase() && u.isActive
-    );
-
-    if (!foundUser) {
-      return { success: false, error: 'Invalid email or password' };
+    try {
+      setIsLoading(true);
+      const response = await authApi.login({ email, password });
+      setUser(transformUser(response.user));
+      return { success: true };
+    } catch (error: any) {
+      console.error('Login failed:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Invalid email or password' 
+      };
+    } finally {
+      setIsLoading(false);
     }
-
-    // Mock password check (any password works for demo)
-    if (password.length < 4) {
-      return { success: false, error: 'Invalid email or password' };
-    }
-
-    setUser(foundUser);
-    localStorage.setItem('wms_user', JSON.stringify(foundUser));
-    return { success: true };
   }, []);
 
-  const logout = useCallback(() => {
-    setUser(null);
-    localStorage.removeItem('wms_user');
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setUser(null);
+    }
   }, []);
 
   const hasPermission = useCallback((module: string, action: string) => {

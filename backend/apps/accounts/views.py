@@ -4,7 +4,11 @@ ViewSets for accounts app.
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.contrib.auth import get_user_model
+from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.contrib.auth import get_user_model, authenticate
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 
@@ -12,11 +16,158 @@ from .models import UserRole, Permission
 from .serializers import (
     UserListSerializer, UserDetailSerializer, UserCreateSerializer,
     UserUpdateSerializer, UserRoleSerializer, PermissionSerializer,
-    ChangePasswordSerializer, CurrentUserSerializer
+    ChangePasswordSerializer, CurrentUserSerializer, LoginSerializer
 )
 from .permissions import IsAdministrator, IsOwnerOrAdmin
 
 User = get_user_model()
+
+
+# ============ Authentication Views ============
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """Custom JWT serializer that includes user data in response."""
+    
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        
+        # Add user data to response
+        user_serializer = CurrentUserSerializer(self.user)
+        data['user'] = user_serializer.data
+        
+        return data
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    """Custom login view that returns JWT tokens and user data."""
+    serializer_class = CustomTokenObtainPairSerializer
+
+
+class LoginView(APIView):
+    """
+    User login endpoint.
+    
+    POST /api/auth/login/
+    
+    Request:
+        {
+            "email": "user@example.com",
+            "password": "password123"
+        }
+    
+    Response:
+        {
+            "access": "jwt_access_token",
+            "refresh": "jwt_refresh_token",
+            "user": { ... user data ... }
+        }
+    """
+    permission_classes = [permissions.AllowAny]
+    
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        email = serializer.validated_data['email']
+        password = serializer.validated_data['password']
+        
+        user = authenticate(request, email=email, password=password)
+        
+        if user is None:
+            return Response(
+                {'error': 'Invalid email or password'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        if not user.is_active:
+            return Response(
+                {'error': 'Account is deactivated'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
+        
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': CurrentUserSerializer(user).data
+        })
+
+
+class LogoutView(APIView):
+    """
+    User logout endpoint.
+    
+    POST /api/auth/logout/
+    
+    Optionally blacklists the refresh token.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        try:
+            refresh_token = request.data.get('refresh')
+            if refresh_token:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+        except Exception:
+            # Token might already be blacklisted or invalid
+            pass
+        
+        return Response({'message': 'Successfully logged out'})
+
+
+class CurrentUserView(APIView):
+    """
+    Get current authenticated user profile.
+    
+    GET /api/auth/me/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        serializer = CurrentUserSerializer(request.user)
+        return Response(serializer.data)
+    
+    def patch(self, request):
+        """Update current user profile."""
+        serializer = UserUpdateSerializer(
+            request.user,
+            data=request.data,
+            partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(CurrentUserSerializer(request.user).data)
+
+
+class PasswordResetRequestView(APIView):
+    """Request password reset email."""
+    permission_classes = [permissions.AllowAny]
+    
+    def post(self, request):
+        email = request.data.get('email')
+        if not email:
+            return Response(
+                {'error': 'Email is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if user exists
+        try:
+            user = User.objects.get(email=email, is_active=True)
+            # TODO: Send password reset email
+            # For now, just acknowledge the request
+        except User.DoesNotExist:
+            pass  # Don't reveal if email exists
+        
+        return Response({
+            'message': 'If an account with that email exists, a password reset link has been sent.'
+        })
+
+
+# ============ User Management ViewSet ============
 
 
 class UserViewSet(viewsets.ModelViewSet):
