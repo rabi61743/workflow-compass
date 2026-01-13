@@ -1,5 +1,20 @@
 import { User, Office, DartaLetter, ChalaniLetter, Notification } from './types';
 
+// Mock Document Types
+export const mockDocumentTypes = [
+  { id: 'doc-type-1', code: 'OL', name: 'Official Letter' },
+  { id: 'doc-type-2', code: 'CORR', name: 'Correspondence' },
+  { id: 'doc-type-3', code: 'MEMO', name: 'Memo/Internal Note' },
+  { id: 'doc-type-4', code: 'RPT', name: 'Report' },
+  { id: 'doc-type-5', code: 'INV', name: 'Invoice/Bill' },
+  { id: 'doc-type-6', code: 'CONT', name: 'Contract/Agreement' },
+  { id: 'doc-type-7', code: 'CIRC', name: 'Circular/Notice' },
+  { id: 'doc-type-8', code: 'PROP', name: 'Proposal' },
+  { id: 'doc-type-9', code: 'COMP', name: 'Complaint' },
+  { id: 'doc-type-10', code: 'AUDIT', name: 'Audit Report' },
+  { id: 'doc-type-11', code: 'OTHER', name: 'Other' },
+];
+
 // Mock Users
 export const mockUsers: User[] = [
   {
