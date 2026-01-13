@@ -49,7 +49,7 @@ export interface Document {
 }
 
 export type LetterPriority = 'normal' | 'urgent' | 'confidential';
-export type LetterStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'closed' | 'terminated';
+export type LetterStatus = 'draft' | 'pending' | 'in_review' | 'approved' | 'rejected' | 'closed' | 'dispatched' | 'terminated';
 
 export interface DartaLetter {
   id: string;

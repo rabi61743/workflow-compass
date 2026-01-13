@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
@@ -19,8 +19,9 @@ import {
   MessageSquare,
   ChevronRight,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
-import { mockDartaLetters, mockUsers } from '@/lib/mock-data';
+import { useDarta, useDartaWorkflow, useDartaAction, useUserList } from '@/hooks';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +29,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -36,13 +38,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Command,
   CommandEmpty,
@@ -54,40 +49,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-
-// Mock workflow steps for demo
-const mockWorkflowSteps = [
-  {
-    id: 'step-1',
-    action: 'create',
-    fromUserId: 'usr-002',
-    fromUserName: 'Sita Sharma',
-    toUserId: null,
-    toUserName: null,
-    remarks: 'Letter registered in the system',
-    timestamp: '2024-11-03T10:30:00Z',
-  },
-  {
-    id: 'step-2',
-    action: 'forward',
-    fromUserId: 'usr-002',
-    fromUserName: 'Sita Sharma',
-    toUserId: 'usr-003',
-    toUserName: 'Hari Prasad Acharya',
-    remarks: 'Forwarding for review and action',
-    timestamp: '2024-11-03T11:00:00Z',
-  },
-  {
-    id: 'step-3',
-    action: 'forward',
-    fromUserId: 'usr-003',
-    fromUserName: 'Hari Prasad Acharya',
-    toUserId: 'usr-004',
-    toUserName: 'Dr. Krishna Bahadur KC',
-    remarks: 'Escalating to Director for approval',
-    timestamp: '2024-11-04T09:15:00Z',
-  },
-];
+import type { DartaLetter, WorkflowStep as WorkflowStepType } from '@/lib/types';
 
 type ActionType = 'forward' | 'return' | 'approve' | 'reject' | 'terminate';
 
@@ -102,17 +64,103 @@ export default function DartaDetail() {
   }>({ open: false, type: null });
   const [selectedUser, setSelectedUser] = useState<string>('');
   const [remarks, setRemarks] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Find the darta letter
-  const darta = mockDartaLetters.find((d) => d.id === id);
+  // Fetch darta details
+  const { data: dartaData, isLoading, isError, error } = useDarta(id || '', !!id);
+  
+  // Fetch workflow history
+  const { data: workflowData } = useDartaWorkflow(id || '', !!id);
+  
+  // Fetch users for forward/return actions
+  const { data: usersData } = useUserList({ is_active: true });
+  
+  // Action mutation
+  const dartaAction = useDartaAction();
 
-  if (!darta) {
+  // Map API response to expected format
+  const darta: DartaLetter | null = useMemo(() => {
+    if (!dartaData) return null;
+    const d = dartaData as any;
+    return {
+      id: d.id,
+      dartaNumber: d.darta_number,
+      fiscalYear: d.fiscal_year,
+      senderName: d.sender_name,
+      senderOrg: d.sender_org,
+      letterDate: d.letter_date,
+      receivedDate: d.received_date,
+      subject: d.subject,
+      priority: d.priority,
+      confidentiality: d.confidentiality,
+      documentType: d.document_type_name || d.document_type,
+      status: d.status,
+      currentHandler: d.current_handler,
+      currentHandlerName: d.current_handler_name || '',
+      attachments: d.attachments || [],
+      createdAt: d.created_at,
+      createdBy: d.created_by,
+    };
+  }, [dartaData]);
+
+  // Map workflow steps
+  const workflowSteps: WorkflowStepType[] = useMemo(() => {
+    if (!workflowData) return [];
+    return (workflowData as any[]).map((step: any) => ({
+      id: step.id,
+      action: step.action,
+      fromUserId: step.from_user,
+      fromUserName: step.from_user_name || '',
+      toUserId: step.to_user,
+      toUserName: step.to_user_name || '',
+      remarks: step.remarks || '',
+      timestamp: step.created_at,
+    }));
+  }, [workflowData]);
+
+  // Available users for forwarding/returning
+  const availableUsers = useMemo(() => {
+    if (!usersData?.results) return [];
+    return (usersData.results as any[])
+      .filter((u: any) => u.id !== user?.id && u.is_active)
+      .map((u: any) => ({
+        id: u.id,
+        name: u.name || `${u.first_name} ${u.last_name}`,
+        designation: u.designation_name || u.designation || 'Staff',
+        officeName: u.office_name || '',
+      }));
+  }, [usersData, user]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-10 w-10" />
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+        </div>
+        <div className="grid gap-6 lg:grid-cols-5">
+          <div className="lg:col-span-3 space-y-6">
+            <Skeleton className="h-64" />
+            <Skeleton className="h-48" />
+          </div>
+          <div className="lg:col-span-2">
+            <Skeleton className="h-[500px]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError || !darta) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
         <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
         <h2 className="text-xl font-semibold mb-2">Darta Not Found</h2>
-        <p className="text-muted-foreground mb-4">The requested darta letter could not be found.</p>
+        <p className="text-muted-foreground mb-4">
+          {(error as Error)?.message || 'The requested darta letter could not be found.'}
+        </p>
         <Button onClick={() => navigate('/darta')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Darta List
@@ -133,6 +181,8 @@ export default function DartaDetail() {
         return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Rejected</Badge>;
       case 'closed':
         return <Badge variant="outline" className="gap-1">Closed</Badge>;
+      case 'terminated':
+        return <Badge className="bg-gray-100 text-gray-800 gap-1">Terminated</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -194,7 +244,7 @@ export default function DartaDetail() {
   };
 
   const handleAction = async () => {
-    if (!actionDialog.type) return;
+    if (!actionDialog.type || !id) return;
 
     if ((actionDialog.type === 'forward' || actionDialog.type === 'return') && !selectedUser) {
       toast.error('Please select a user');
@@ -206,32 +256,22 @@ export default function DartaDetail() {
       return;
     }
 
-    setIsSubmitting(true);
-
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      
-      const actionLabels: Record<ActionType, string> = {
-        forward: 'Forwarded',
-        return: 'Returned',
-        approve: 'Approved',
-        reject: 'Rejected',
-        terminate: 'Terminated',
-      };
-
-      toast.success(`Darta ${actionLabels[actionDialog.type]} successfully`);
-      closeActionDialog();
-      // In real app, would refetch data here
-    } catch (error) {
-      toast.error('Action failed. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
+    dartaAction.mutate(
+      {
+        id,
+        action: {
+          action: actionDialog.type,
+          to_user_id: selectedUser || undefined,
+          remarks: remarks,
+        },
+      },
+      {
+        onSuccess: () => {
+          closeActionDialog();
+        },
+      }
+    );
   };
-
-  const availableUsers = mockUsers.filter(
-    (u) => u.id !== user?.id && u.isActive
-  );
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
@@ -382,8 +422,10 @@ export default function DartaDetail() {
                           </p>
                         </div>
                       </div>
-                      <Button variant="ghost" size="icon">
-                        <Download className="h-4 w-4" />
+                      <Button variant="ghost" size="icon" asChild>
+                        <a href={attachment.url} target="_blank" rel="noopener noreferrer">
+                          <Download className="h-4 w-4" />
+                        </a>
                       </Button>
                     </div>
                   ))}
@@ -407,7 +449,7 @@ export default function DartaDetail() {
                 <div>
                   <p className="font-medium">{darta.currentHandlerName}</p>
                   <p className="text-sm text-muted-foreground">
-                    {mockUsers.find(u => u.id === darta.currentHandler)?.designation || 'Staff'}
+                    {availableUsers.find(u => u.id === darta.currentHandler)?.designation || 'Staff'}
                   </p>
                 </div>
                 {isCurrentHandler && (
@@ -433,43 +475,49 @@ export default function DartaDetail() {
 
                   {/* Timeline items */}
                   <div className="space-y-6">
-                    {mockWorkflowSteps.map((step, index) => (
-                      <div key={step.id} className="relative flex gap-4">
-                        {/* Icon */}
-                        <div
-                          className={cn(
-                            'relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-white',
-                            getActionColor(step.action)
-                          )}
-                        >
-                          {getActionIcon(step.action)}
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex-1 pb-2">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium capitalize">{step.action}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {format(new Date(step.timestamp), 'PPp')}
-                            </span>
-                          </div>
-                          <p className="text-sm text-muted-foreground mb-2">
-                            by <span className="font-medium text-foreground">{step.fromUserName}</span>
-                            {step.toUserName && (
-                              <>
-                                {' → '}
-                                <span className="font-medium text-foreground">{step.toUserName}</span>
-                              </>
+                    {workflowSteps.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        No workflow history yet
+                      </p>
+                    ) : (
+                      workflowSteps.map((step) => (
+                        <div key={step.id} className="relative flex gap-4">
+                          {/* Icon */}
+                          <div
+                            className={cn(
+                              'relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-white',
+                              getActionColor(step.action)
                             )}
-                          </p>
-                          {step.remarks && (
-                            <div className="text-sm bg-muted/50 rounded-md p-2 mt-1">
-                              {step.remarks}
+                          >
+                            {getActionIcon(step.action)}
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 pb-2">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium capitalize">{step.action}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {format(new Date(step.timestamp), 'PPp')}
+                              </span>
                             </div>
-                          )}
+                            <p className="text-sm text-muted-foreground mb-2">
+                              by <span className="font-medium text-foreground">{step.fromUserName}</span>
+                              {step.toUserName && (
+                                <>
+                                  {' → '}
+                                  <span className="font-medium text-foreground">{step.toUserName}</span>
+                                </>
+                              )}
+                            </p>
+                            {step.remarks && (
+                              <div className="text-sm bg-muted/50 rounded-md p-2 mt-1">
+                                {step.remarks}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </div>
               </ScrollArea>
@@ -480,14 +528,17 @@ export default function DartaDetail() {
 
       {/* Action Dialog */}
       <Dialog open={actionDialog.open} onOpenChange={(open) => !open && closeActionDialog()}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle className="capitalize">{actionDialog.type} Darta</DialogTitle>
+            <DialogTitle className="capitalize">
+              {actionDialog.type} Darta
+            </DialogTitle>
             <DialogDescription>
               {actionDialog.type === 'forward' && 'Select a user to forward this darta to.'}
-              {actionDialog.type === 'return' && 'Select the user to return this darta to.'}
-              {actionDialog.type === 'approve' && 'Approve this darta and complete the workflow.'}
+              {actionDialog.type === 'return' && 'Select a user to return this darta to.'}
+              {actionDialog.type === 'approve' && 'Approve this darta and mark it as completed.'}
               {actionDialog.type === 'reject' && 'Reject this darta with a reason.'}
+              {actionDialog.type === 'terminate' && 'Terminate this darta without further action.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -495,8 +546,8 @@ export default function DartaDetail() {
             {/* User Selection for Forward/Return */}
             {(actionDialog.type === 'forward' || actionDialog.type === 'return') && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Select User *</label>
-                <Command className="border rounded-md">
+                <label className="text-sm font-medium">Select User</label>
+                <Command className="border rounded-lg">
                   <CommandInput placeholder="Search users..." />
                   <CommandList>
                     <CommandEmpty>No users found.</CommandEmpty>
@@ -504,23 +555,27 @@ export default function DartaDetail() {
                       {availableUsers.map((u) => (
                         <CommandItem
                           key={u.id}
-                          value={u.name}
                           onSelect={() => setSelectedUser(u.id)}
                           className={cn(
                             'cursor-pointer',
                             selectedUser === u.id && 'bg-primary/10'
                           )}
                         >
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-6 w-6">
+                          <div className="flex items-center gap-3 w-full">
+                            <Avatar className="h-8 w-8">
                               <AvatarFallback className="text-xs">
-                                {u.name.split(' ').map(n => n[0]).join('')}
+                                {u.name.split(' ').map((n: string) => n[0]).join('')}
                               </AvatarFallback>
                             </Avatar>
-                            <div>
+                            <div className="flex-1">
                               <p className="text-sm font-medium">{u.name}</p>
-                              <p className="text-xs text-muted-foreground">{u.designation}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {u.designation} • {u.officeName}
+                              </p>
                             </div>
+                            {selectedUser === u.id && (
+                              <CheckCircle2 className="h-4 w-4 text-primary" />
+                            )}
                           </div>
                         </CommandItem>
                       ))}
@@ -536,7 +591,7 @@ export default function DartaDetail() {
                 Remarks {(actionDialog.type === 'reject' || actionDialog.type === 'terminate') && '*'}
               </label>
               <Textarea
-                placeholder="Add your remarks..."
+                placeholder="Add your remarks here..."
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
                 rows={3}
@@ -545,18 +600,25 @@ export default function DartaDetail() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={closeActionDialog} disabled={isSubmitting}>
+            <Button variant="outline" onClick={closeActionDialog}>
               Cancel
             </Button>
-            <Button
-              onClick={handleAction}
-              disabled={isSubmitting}
+            <Button 
+              onClick={handleAction} 
+              disabled={dartaAction.isPending}
               className={cn(
                 actionDialog.type === 'approve' && 'bg-green-600 hover:bg-green-700',
                 actionDialog.type === 'reject' && 'bg-destructive hover:bg-destructive/90'
               )}
             >
-              {isSubmitting ? 'Processing...' : `Confirm ${actionDialog.type}`}
+              {dartaAction.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <span className="capitalize">{actionDialog.type}</span>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
