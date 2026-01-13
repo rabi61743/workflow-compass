@@ -12,7 +12,9 @@ import NewDarta from "@/pages/NewDarta";
 import DartaDetail from "@/pages/DartaDetail";
 import ChalaniList from "@/pages/ChalaniList";
 import NewChalani from "@/pages/NewChalani";
+import ChalaniDetail from "@/pages/ChalaniDetail";
 import Organization from "@/pages/Organization";
+import UserManagement from "@/pages/UserManagement";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,12 +38,13 @@ const App = () => {
                 <Route path="/darta/:id" element={<DartaDetail />} />
                 <Route path="/chalani" element={<ChalaniList />} />
                 <Route path="/chalani/new" element={<NewChalani />} />
+                <Route path="/chalani/:id" element={<ChalaniDetail />} />
                 <Route path="/organization" element={<Organization />} />
+                <Route path="/users" element={<UserManagement />} />
                 
                 {/* Placeholder routes */}
                 <Route path="/files" element={<PlaceholderPage title="File Tracking" />} />
                 <Route path="/search" element={<PlaceholderPage title="Search" />} />
-                <Route path="/users" element={<PlaceholderPage title="User Management" />} />
                 <Route path="/templates" element={<PlaceholderPage title="Templates" />} />
                 <Route path="/reports" element={<PlaceholderPage title="Reports" />} />
                 <Route path="/audit" element={<PlaceholderPage title="Audit Logs" />} />
