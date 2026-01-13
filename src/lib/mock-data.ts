@@ -15,6 +15,77 @@ export const mockDocumentTypes = [
   { id: 'doc-type-11', code: 'OTHER', name: 'Other' },
 ];
 
+// Mock Letter Templates
+export const mockLetterTemplates = [
+  {
+    id: 'tpl-1',
+    name: 'General Official Letter',
+    category: 'Official',
+    content: `<p>Respected Sir/Madam,</p>
+<p>With reference to the above subject, I would like to bring to your kind attention that [describe the matter here].</p>
+<p>I kindly request you to [state your request here].</p>
+<p>Thank you for your cooperation.</p>
+<p>Sincerely,</p>`,
+  },
+  {
+    id: 'tpl-2',
+    name: 'Request for Information',
+    category: 'Request',
+    content: `<p>Dear Sir/Madam,</p>
+<p>I am writing to request information regarding [subject matter].</p>
+<p>Specifically, I would like to know:</p>
+<ol>
+<li>[First question]</li>
+<li>[Second question]</li>
+<li>[Third question]</li>
+</ol>
+<p>I would appreciate if you could provide this information at your earliest convenience.</p>
+<p>Thank you for your assistance.</p>`,
+  },
+  {
+    id: 'tpl-3',
+    name: 'Acknowledgment Letter',
+    category: 'Acknowledgment',
+    content: `<p>Dear Sir/Madam,</p>
+<p>This is to acknowledge receipt of your letter dated [date] regarding [subject].</p>
+<p>We have noted the contents and will take necessary action as required. You will be informed of the progress in due course.</p>
+<p>Thank you for bringing this matter to our attention.</p>`,
+  },
+  {
+    id: 'tpl-4',
+    name: 'Internal Memo',
+    category: 'Internal',
+    content: `<p><strong>INTERNAL MEMORANDUM</strong></p>
+<p><strong>To:</strong> [Recipient Name/Department]</p>
+<p><strong>From:</strong> [Your Name/Department]</p>
+<p><strong>Date:</strong> [Date]</p>
+<p><strong>Subject:</strong> [Subject]</p>
+<hr/>
+<p>[Content of the memo]</p>
+<p>Please take necessary action and confirm.</p>`,
+  },
+  {
+    id: 'tpl-5',
+    name: 'Approval Request',
+    category: 'Approval',
+    content: `<p>Respected Sir/Madam,</p>
+<p>I hereby submit this request for your kind approval regarding [matter].</p>
+<p><strong>Background:</strong></p>
+<p>[Provide background information]</p>
+<p><strong>Proposal:</strong></p>
+<p>[Describe the proposal]</p>
+<p><strong>Recommendation:</strong></p>
+<p>[Your recommendation]</p>
+<p>I request your kind approval for the above.</p>`,
+  },
+  {
+    id: 'tpl-6',
+    name: 'Blank Template',
+    category: 'General',
+    content: `<p></p>`,
+  },
+];
+
 // Mock Users
 export const mockUsers: User[] = [
   {

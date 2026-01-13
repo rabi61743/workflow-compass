@@ -11,6 +11,7 @@ import DartaList from "@/pages/DartaList";
 import NewDarta from "@/pages/NewDarta";
 import DartaDetail from "@/pages/DartaDetail";
 import ChalaniList from "@/pages/ChalaniList";
+import NewChalani from "@/pages/NewChalani";
 import Organization from "@/pages/Organization";
 import NotFound from "@/pages/NotFound";
 
@@ -33,6 +34,8 @@ const App = () => (
               <Route path="/darta/new" element={<NewDarta />} />
               <Route path="/darta/:id" element={<DartaDetail />} />
               <Route path="/chalani" element={<ChalaniList />} />
+              <Route path="/chalani/new" element={<NewChalani />} />
+              <Route path="/organization" element={<Organization />} />
               <Route path="/organization" element={<Organization />} />
               
               {/* Placeholder routes */}
