@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
@@ -21,8 +21,9 @@ import {
   Send,
   Edit,
   Eye,
+  Loader2,
 } from 'lucide-react';
-import { mockChalaniLetters, mockUsers } from '@/lib/mock-data';
+import { useChalani, useChalaniWorkflow, useChalaniAction, useDispatchChalani, useUserList } from '@/hooks';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +31,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -56,50 +58,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-
-// Mock workflow steps for demo
-const mockWorkflowSteps = [
-  {
-    id: 'step-1',
-    action: 'create',
-    fromUserId: 'usr-003',
-    fromUserName: 'Hari Prasad Acharya',
-    toUserId: null,
-    toUserName: null,
-    remarks: 'Draft created from template',
-    timestamp: '2024-11-10T11:00:00Z',
-  },
-  {
-    id: 'step-2',
-    action: 'forward',
-    fromUserId: 'usr-003',
-    fromUserName: 'Hari Prasad Acharya',
-    toUserId: 'usr-004',
-    toUserName: 'Dr. Krishna Bahadur KC',
-    remarks: 'Submitting for approval before dispatch',
-    timestamp: '2024-11-10T14:30:00Z',
-  },
-  {
-    id: 'step-3',
-    action: 'approve',
-    fromUserId: 'usr-004',
-    fromUserName: 'Dr. Krishna Bahadur KC',
-    toUserId: 'usr-003',
-    toUserName: 'Hari Prasad Acharya',
-    remarks: 'Approved for dispatch. Please proceed.',
-    timestamp: '2024-11-11T10:00:00Z',
-  },
-  {
-    id: 'step-4',
-    action: 'dispatch',
-    fromUserId: 'usr-003',
-    fromUserName: 'Hari Prasad Acharya',
-    toUserId: null,
-    toUserName: null,
-    remarks: 'Dispatched via courier service',
-    timestamp: '2024-11-12T15:30:00Z',
-  },
-];
+import type { ChalaniLetter, WorkflowStep as WorkflowStepType } from '@/lib/types';
 
 type ActionType = 'forward' | 'return' | 'approve' | 'reject' | 'dispatch' | 'edit';
 
@@ -115,18 +74,103 @@ export default function ChalaniDetail() {
   const [dispatchMethod, setDispatchMethod] = useState<string>('');
   const [selectedUser, setSelectedUser] = useState<string>('');
   const [remarks, setRemarks] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showContent, setShowContent] = useState(false);
 
-  // Find the chalani letter
-  const chalani = mockChalaniLetters.find((c) => c.id === id);
+  // Fetch chalani details
+  const { data: chalaniData, isLoading, isError, error } = useChalani(id || '', !!id);
+  
+  // Fetch workflow history
+  const { data: workflowData } = useChalaniWorkflow(id || '', !!id);
+  
+  // Fetch users for forward/return actions
+  const { data: usersData } = useUserList({ is_active: true });
+  
+  // Mutations
+  const chalaniAction = useChalaniAction();
+  const dispatchChalani = useDispatchChalani();
 
-  if (!chalani) {
+  // Map API response to expected format
+  const chalani: ChalaniLetter | null = useMemo(() => {
+    if (!chalaniData) return null;
+    const c = chalaniData as any;
+    return {
+      id: c.id,
+      chalaniNumber: c.chalani_number || '-',
+      fiscalYear: c.fiscal_year,
+      receiverName: c.receiver_name,
+      receiverOrg: c.receiver_org || c.receiver_office_name || '',
+      receiverType: c.receiver_type,
+      subject: c.subject,
+      priority: c.priority,
+      status: c.status,
+      content: c.content || '',
+      templateId: c.template,
+      attachments: c.attachments || [],
+      createdAt: c.created_at,
+      createdBy: c.created_by,
+      dispatchedAt: c.dispatched_at,
+    };
+  }, [chalaniData]);
+
+  // Map workflow steps
+  const workflowSteps: WorkflowStepType[] = useMemo(() => {
+    if (!workflowData) return [];
+    return (workflowData as any[]).map((step: any) => ({
+      id: step.id,
+      action: step.action,
+      fromUserId: step.from_user,
+      fromUserName: step.from_user_name || '',
+      toUserId: step.to_user,
+      toUserName: step.to_user_name || '',
+      remarks: step.remarks || '',
+      timestamp: step.created_at,
+    }));
+  }, [workflowData]);
+
+  // Available users for forwarding/returning
+  const availableUsers = useMemo(() => {
+    if (!usersData?.results) return [];
+    return (usersData.results as any[])
+      .filter((u: any) => u.id !== user?.id && u.is_active)
+      .map((u: any) => ({
+        id: u.id,
+        name: u.name || `${u.first_name} ${u.last_name}`,
+        designation: u.designation_name || u.designation || 'Staff',
+        officeName: u.office_name || '',
+      }));
+  }, [usersData, user]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-10 w-10" />
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+        </div>
+        <div className="grid gap-6 lg:grid-cols-5">
+          <div className="lg:col-span-3 space-y-6">
+            <Skeleton className="h-64" />
+            <Skeleton className="h-48" />
+          </div>
+          <div className="lg:col-span-2">
+            <Skeleton className="h-[500px]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError || !chalani) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
         <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
         <h2 className="text-xl font-semibold mb-2">Chalani Not Found</h2>
-        <p className="text-muted-foreground mb-4">The requested chalani letter could not be found.</p>
+        <p className="text-muted-foreground mb-4">
+          {(error as Error)?.message || 'The requested chalani letter could not be found.'}
+        </p>
         <Button onClick={() => navigate('/chalani')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Chalani List
@@ -137,6 +181,7 @@ export default function ChalaniDetail() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case 'draft':
       case 'pending':
         return <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" /> Draft</Badge>;
       case 'in_review':
@@ -145,6 +190,7 @@ export default function ChalaniDetail() {
         return <Badge className="bg-green-100 text-green-800 gap-1"><CheckCircle2 className="h-3 w-3" /> Approved</Badge>;
       case 'rejected':
         return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Rejected</Badge>;
+      case 'dispatched':
       case 'closed':
         return <Badge className="bg-purple-100 text-purple-800 gap-1"><Send className="h-3 w-3" /> Dispatched</Badge>;
       default:
@@ -214,7 +260,7 @@ export default function ChalaniDetail() {
   };
 
   const handleAction = async () => {
-    if (!actionDialog.type) return;
+    if (!actionDialog.type || !id) return;
 
     if ((actionDialog.type === 'forward' || actionDialog.type === 'return') && !selectedUser) {
       toast.error('Please select a user');
@@ -231,32 +277,39 @@ export default function ChalaniDetail() {
       return;
     }
 
-    setIsSubmitting(true);
-
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      
-      const actionLabels: Record<ActionType, string> = {
-        forward: 'Forwarded',
-        return: 'Returned',
-        approve: 'Approved',
-        reject: 'Rejected',
-        dispatch: 'Dispatched',
-        edit: 'Updated',
-      };
-
-      toast.success(`Chalani ${actionLabels[actionDialog.type]} successfully`);
-      closeActionDialog();
-    } catch (error) {
-      toast.error('Action failed. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+    if (actionDialog.type === 'dispatch') {
+      dispatchChalani.mutate(
+        {
+          id,
+          details: {
+            method: dispatchMethod,
+            remarks: remarks || undefined,
+          },
+        },
+        {
+          onSuccess: () => {
+            closeActionDialog();
+          },
+        }
+      );
+    } else {
+      chalaniAction.mutate(
+        {
+          id,
+          action: {
+            action: actionDialog.type,
+            to_user_id: selectedUser || undefined,
+            remarks: remarks,
+          },
+        },
+        {
+          onSuccess: () => {
+            closeActionDialog();
+          },
+        }
+      );
     }
   };
-
-  const availableUsers = mockUsers.filter(
-    (u) => u.id !== user?.id && u.isActive
-  );
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
@@ -264,9 +317,10 @@ export default function ChalaniDetail() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  const isDraft = chalani.status === 'pending';
+  const isPending = chalaniAction.isPending || dispatchChalani.isPending;
+  const isDraft = chalani.status === 'pending' || chalani.status === 'draft';
   const isApproved = chalani.status === 'approved';
-  const isDispatched = chalani.status === 'closed';
+  const isDispatched = chalani.status === 'closed' || chalani.status === 'dispatched';
   const canEdit = isDraft;
   const canSubmitForReview = isDraft;
   const canDispatch = isApproved && !chalani.dispatchedAt;
@@ -443,8 +497,10 @@ export default function ChalaniDetail() {
                           </p>
                         </div>
                       </div>
-                      <Button variant="ghost" size="icon">
-                        <Download className="h-4 w-4" />
+                      <Button variant="ghost" size="icon" asChild>
+                        <a href={attachment.url} target="_blank" rel="noopener noreferrer">
+                          <Download className="h-4 w-4" />
+                        </a>
                       </Button>
                     </div>
                   ))}
@@ -469,43 +525,49 @@ export default function ChalaniDetail() {
 
                   {/* Timeline items */}
                   <div className="space-y-6">
-                    {mockWorkflowSteps.map((step) => (
-                      <div key={step.id} className="relative flex gap-4">
-                        {/* Icon */}
-                        <div
-                          className={cn(
-                            'relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-white',
-                            getActionColor(step.action)
-                          )}
-                        >
-                          {getActionIcon(step.action)}
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex-1 pb-2">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium capitalize">{step.action}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {format(new Date(step.timestamp), 'PPp')}
-                            </span>
-                          </div>
-                          <p className="text-sm text-muted-foreground mb-2">
-                            by <span className="font-medium text-foreground">{step.fromUserName}</span>
-                            {step.toUserName && (
-                              <>
-                                {' → '}
-                                <span className="font-medium text-foreground">{step.toUserName}</span>
-                              </>
+                    {workflowSteps.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        No workflow history yet
+                      </p>
+                    ) : (
+                      workflowSteps.map((step) => (
+                        <div key={step.id} className="relative flex gap-4">
+                          {/* Icon */}
+                          <div
+                            className={cn(
+                              'relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-white',
+                              getActionColor(step.action)
                             )}
-                          </p>
-                          {step.remarks && (
-                            <div className="text-sm bg-muted/50 rounded-md p-2 mt-1">
-                              {step.remarks}
+                          >
+                            {getActionIcon(step.action)}
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 pb-2">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium capitalize">{step.action}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {format(new Date(step.timestamp), 'PPp')}
+                              </span>
                             </div>
-                          )}
+                            <p className="text-sm text-muted-foreground mb-2">
+                              by <span className="font-medium text-foreground">{step.fromUserName}</span>
+                              {step.toUserName && (
+                                <>
+                                  {' → '}
+                                  <span className="font-medium text-foreground">{step.toUserName}</span>
+                                </>
+                              )}
+                            </p>
+                            {step.remarks && (
+                              <div className="text-sm bg-muted/50 rounded-md p-2 mt-1">
+                                {step.remarks}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </div>
               </ScrollArea>
@@ -519,18 +581,14 @@ export default function ChalaniDetail() {
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="capitalize">
-              {actionDialog.type === 'forward' && 'Submit for Review'}
-              {actionDialog.type === 'return' && 'Return Chalani'}
-              {actionDialog.type === 'approve' && 'Approve Chalani'}
-              {actionDialog.type === 'reject' && 'Reject Chalani'}
-              {actionDialog.type === 'dispatch' && 'Dispatch Chalani'}
+              {actionDialog.type === 'dispatch' ? 'Dispatch Chalani' : `${actionDialog.type} Chalani`}
             </DialogTitle>
             <DialogDescription>
-              {actionDialog.type === 'forward' && 'Select an approving authority to review this chalani.'}
-              {actionDialog.type === 'return' && 'Return this chalani with your feedback.'}
+              {actionDialog.type === 'forward' && 'Select a user to forward this chalani to for review.'}
+              {actionDialog.type === 'return' && 'Select a user to return this chalani to.'}
               {actionDialog.type === 'approve' && 'Approve this chalani for dispatch.'}
-              {actionDialog.type === 'reject' && 'Reject this chalani with reason.'}
-              {actionDialog.type === 'dispatch' && 'Select dispatch method and confirm.'}
+              {actionDialog.type === 'reject' && 'Reject this chalani with a reason.'}
+              {actionDialog.type === 'dispatch' && 'Choose how to dispatch this letter.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -542,36 +600,35 @@ export default function ChalaniDetail() {
                 <Command className="border rounded-lg">
                   <CommandInput placeholder="Search users..." />
                   <CommandList>
-                    <CommandEmpty>No user found.</CommandEmpty>
+                    <CommandEmpty>No users found.</CommandEmpty>
                     <CommandGroup>
-                      <ScrollArea className="h-[200px]">
-                        {availableUsers.map((u) => (
-                          <CommandItem
-                            key={u.id}
-                            value={u.name}
-                            onSelect={() => setSelectedUser(u.id)}
-                            className={cn(
-                              'cursor-pointer',
-                              selectedUser === u.id && 'bg-primary/10'
-                            )}
-                          >
-                            <div className="flex items-center gap-3 w-full">
-                              <Avatar className="h-8 w-8">
-                                <AvatarFallback className="text-xs">
-                                  {u.name.split(' ').map(n => n[0]).join('')}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1">
-                                <p className="text-sm font-medium">{u.name}</p>
-                                <p className="text-xs text-muted-foreground">{u.designation}</p>
-                              </div>
-                              {selectedUser === u.id && (
-                                <CheckCircle2 className="h-4 w-4 text-primary" />
-                              )}
+                      {availableUsers.map((u) => (
+                        <CommandItem
+                          key={u.id}
+                          onSelect={() => setSelectedUser(u.id)}
+                          className={cn(
+                            'cursor-pointer',
+                            selectedUser === u.id && 'bg-primary/10'
+                          )}
+                        >
+                          <div className="flex items-center gap-3 w-full">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className="text-xs">
+                                {u.name.split(' ').map((n: string) => n[0]).join('')}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{u.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {u.designation} • {u.officeName}
+                              </p>
                             </div>
-                          </CommandItem>
-                        ))}
-                      </ScrollArea>
+                            {selectedUser === u.id && (
+                              <CheckCircle2 className="h-4 w-4 text-primary" />
+                            )}
+                          </div>
+                        </CommandItem>
+                      ))}
                     </CommandGroup>
                   </CommandList>
                 </Command>
@@ -581,16 +638,16 @@ export default function ChalaniDetail() {
             {/* Dispatch Method Selection */}
             {actionDialog.type === 'dispatch' && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Dispatch Method</label>
+                <label className="text-sm font-medium">Dispatch Method *</label>
                 <Select value={dispatchMethod} onValueChange={setDispatchMethod}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select dispatch method" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="courier">Courier Service</SelectItem>
-                    <SelectItem value="post">Postal Mail</SelectItem>
+                    <SelectItem value="hand_delivery">Hand Delivery</SelectItem>
+                    <SelectItem value="registered_post">Registered Post</SelectItem>
                     <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="hand">Hand Delivery</SelectItem>
                     <SelectItem value="fax">Fax</SelectItem>
                   </SelectContent>
                 </Select>
@@ -600,10 +657,10 @@ export default function ChalaniDetail() {
             {/* Remarks */}
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                Remarks {(actionDialog.type === 'reject') && <span className="text-destructive">*</span>}
+                Remarks {actionDialog.type === 'reject' && '*'}
               </label>
               <Textarea
-                placeholder="Enter your remarks or comments..."
+                placeholder="Add your remarks here..."
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
                 rows={3}
@@ -612,11 +669,26 @@ export default function ChalaniDetail() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={closeActionDialog} disabled={isSubmitting}>
+            <Button variant="outline" onClick={closeActionDialog}>
               Cancel
             </Button>
-            <Button onClick={handleAction} disabled={isSubmitting}>
-              {isSubmitting ? 'Processing...' : 'Confirm'}
+            <Button 
+              onClick={handleAction} 
+              disabled={isPending}
+              className={cn(
+                actionDialog.type === 'approve' && 'bg-green-600 hover:bg-green-700',
+                actionDialog.type === 'reject' && 'bg-destructive hover:bg-destructive/90',
+                actionDialog.type === 'dispatch' && 'bg-purple-600 hover:bg-purple-700'
+              )}
+            >
+              {isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <span className="capitalize">{actionDialog.type}</span>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
