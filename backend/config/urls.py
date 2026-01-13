@@ -13,6 +13,7 @@ urlpatterns = [
     # JWT Authentication
     path('api/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/auth/', include('apps.accounts.urls')),
     
     # App APIs
     path('api/accounts/', include('apps.accounts.urls')),
@@ -21,6 +22,7 @@ urlpatterns = [
     path('api/chalani/', include('apps.chalani.urls')),
     path('api/workflow/', include('apps.workflow.urls')),
     path('api/notifications/', include('apps.notifications.urls')),
+    path('api/paperless/', include('apps.paperless.urls')),
 ]
 
 if settings.DEBUG:
