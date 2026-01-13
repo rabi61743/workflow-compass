@@ -17,50 +17,51 @@ import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <AuthProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            
-            {/* Protected routes with layout */}
-            <Route element={<AppLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/darta" element={<DartaList />} />
-              <Route path="/darta/new" element={<NewDarta />} />
-              <Route path="/darta/:id" element={<DartaDetail />} />
-              <Route path="/chalani" element={<ChalaniList />} />
-              <Route path="/chalani/new" element={<NewChalani />} />
-              <Route path="/organization" element={<Organization />} />
-              <Route path="/organization" element={<Organization />} />
+const App = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <AuthProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<Login />} />
               
-              {/* Placeholder routes */}
-              <Route path="/files" element={<PlaceholderPage title="File Tracking" />} />
-              <Route path="/search" element={<PlaceholderPage title="Search" />} />
-              <Route path="/users" element={<PlaceholderPage title="User Management" />} />
-              <Route path="/templates" element={<PlaceholderPage title="Templates" />} />
-              <Route path="/reports" element={<PlaceholderPage title="Reports" />} />
-              <Route path="/audit" element={<PlaceholderPage title="Audit Logs" />} />
-              <Route path="/settings" element={<PlaceholderPage title="Settings" />} />
-              <Route path="/notifications" element={<PlaceholderPage title="Notifications" />} />
-              <Route path="/profile" element={<PlaceholderPage title="Profile" />} />
-            </Route>
+              {/* Protected routes with layout */}
+              <Route element={<AppLayout />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/darta" element={<DartaList />} />
+                <Route path="/darta/new" element={<NewDarta />} />
+                <Route path="/darta/:id" element={<DartaDetail />} />
+                <Route path="/chalani" element={<ChalaniList />} />
+                <Route path="/chalani/new" element={<NewChalani />} />
+                <Route path="/organization" element={<Organization />} />
+                
+                {/* Placeholder routes */}
+                <Route path="/files" element={<PlaceholderPage title="File Tracking" />} />
+                <Route path="/search" element={<PlaceholderPage title="Search" />} />
+                <Route path="/users" element={<PlaceholderPage title="User Management" />} />
+                <Route path="/templates" element={<PlaceholderPage title="Templates" />} />
+                <Route path="/reports" element={<PlaceholderPage title="Reports" />} />
+                <Route path="/audit" element={<PlaceholderPage title="Audit Logs" />} />
+                <Route path="/settings" element={<PlaceholderPage title="Settings" />} />
+                <Route path="/notifications" element={<PlaceholderPage title="Notifications" />} />
+                <Route path="/profile" element={<PlaceholderPage title="Profile" />} />
+              </Route>
 
-            {/* Redirect root to dashboard */}
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            
-            {/* Catch-all */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+              {/* Redirect root to dashboard */}
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              
+              {/* Catch-all */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </AuthProvider>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 // Placeholder component for routes not yet built
 function PlaceholderPage({ title }: { title: string }) {
