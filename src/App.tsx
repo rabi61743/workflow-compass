@@ -8,6 +8,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import DartaList from "@/pages/DartaList";
+import NewDarta from "@/pages/NewDarta";
 import ChalaniList from "@/pages/ChalaniList";
 import Organization from "@/pages/Organization";
 import NotFound from "@/pages/NotFound";
@@ -28,6 +29,7 @@ const App = () => (
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/darta" element={<DartaList />} />
+              <Route path="/darta/new" element={<NewDarta />} />
               <Route path="/chalani" element={<ChalaniList />} />
               <Route path="/organization" element={<Organization />} />
               
