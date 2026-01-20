@@ -20,3 +20,15 @@ export type {
   PaperlessTag,
   PaperlessStatistics 
 } from './paperless';
+
+// New API services
+export { auditApi } from './audit';
+export type { AuditLog } from './audit';
+export { templatesApi } from './templates';
+export type { LetterTemplate } from './templates';
+export { fileTrackingApi } from './file-tracking';
+export type { FileTracker, LinkedDocument } from './file-tracking';
+export { reportsApi } from './reports';
+export type { ReportsData, TrendData, StatusDistribution, DepartmentWorkload, SlaData } from './reports';
+export { searchApi } from './search';
+export type { SearchResult } from './search';
