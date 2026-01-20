@@ -118,7 +118,9 @@ class FileTrackerListSerializer(serializers.ModelSerializer):
     """Serializer for file tracker list."""
     current_handler_name = serializers.CharField(source='current_handler.name', read_only=True)
     office_name = serializers.CharField(source='office.name', read_only=True)
-    document_count = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source='created_by.name', read_only=True)
+    darta_count = serializers.SerializerMethodField()
+    chalani_count = serializers.SerializerMethodField()
     
     class Meta:
         model = FileTracker
@@ -126,11 +128,15 @@ class FileTrackerListSerializer(serializers.ModelSerializer):
             'id', 'file_number', 'title', 'description',
             'current_handler', 'current_handler_name',
             'office', 'office_name',
-            'is_active', 'document_count', 'created_at'
+            'is_active', 'darta_count', 'chalani_count',
+            'created_by', 'created_by_name', 'created_at', 'updated_at'
         ]
     
-    def get_document_count(self, obj):
-        return obj.darta_letters.count() + obj.chalani_letters.count()
+    def get_darta_count(self, obj):
+        return obj.darta_letters.count()
+    
+    def get_chalani_count(self, obj):
+        return obj.chalani_letters.count()
 
 
 class FileTrackerDetailSerializer(serializers.ModelSerializer):
@@ -140,6 +146,9 @@ class FileTrackerDetailSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(source='created_by.name', read_only=True)
     darta_letters = serializers.SerializerMethodField()
     chalani_letters = serializers.SerializerMethodField()
+    linked_documents = serializers.SerializerMethodField()
+    darta_count = serializers.SerializerMethodField()
+    chalani_count = serializers.SerializerMethodField()
     
     class Meta:
         model = FileTracker
@@ -148,7 +157,8 @@ class FileTrackerDetailSerializer(serializers.ModelSerializer):
             'current_handler', 'current_handler_name',
             'office', 'office_name',
             'is_active', 'closed_at',
-            'darta_letters', 'chalani_letters',
+            'darta_letters', 'chalani_letters', 'linked_documents',
+            'darta_count', 'chalani_count',
             'created_by', 'created_by_name', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -160,6 +170,34 @@ class FileTrackerDetailSerializer(serializers.ModelSerializer):
     def get_chalani_letters(self, obj):
         from apps.chalani.serializers import ChalaniListSerializer
         return ChalaniListSerializer(obj.chalani_letters.all(), many=True).data
+    
+    def get_linked_documents(self, obj):
+        """Get linked documents in frontend-expected format."""
+        documents = []
+        
+        for darta in obj.darta_letters.all():
+            documents.append({
+                'type': 'darta',
+                'id': str(darta.id),
+                'number': darta.darta_number,
+                'subject': darta.subject
+            })
+        
+        for chalani in obj.chalani_letters.all():
+            documents.append({
+                'type': 'chalani',
+                'id': str(chalani.id),
+                'number': chalani.chalani_number or 'Draft',
+                'subject': chalani.subject
+            })
+        
+        return documents
+    
+    def get_darta_count(self, obj):
+        return obj.darta_letters.count()
+    
+    def get_chalani_count(self, obj):
+        return obj.chalani_letters.count()
 
 
 class FileTrackerCreateSerializer(serializers.ModelSerializer):
@@ -199,11 +237,25 @@ class FileTrackerCreateSerializer(serializers.ModelSerializer):
 
 class AuditLogSerializer(serializers.ModelSerializer):
     """Serializer for audit logs (read-only)."""
+    user_name = serializers.SerializerMethodField()
     
     class Meta:
         model = AuditLog
         fields = [
-            'id', 'user', 'user_email', 'action', 'module',
-            'details', 'ip_address', 'timestamp'
+            'id', 'user', 'user_email', 'user_name', 'action', 'module',
+            'details', 'ip_address', 'user_agent', 'timestamp'
         ]
         read_only_fields = fields
+    
+    def get_user_name(self, obj):
+        if obj.user:
+            return obj.user.name
+        return obj.user_email.split('@')[0] if obj.user_email else 'Unknown'
+
+
+class FileTrackerUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating file trackers."""
+    
+    class Meta:
+        model = FileTracker
+        fields = ['title', 'description', 'current_handler', 'office']
