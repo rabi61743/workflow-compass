@@ -102,6 +102,54 @@ export {
   useDownloadPaperlessDocument,
 } from './use-paperless';
 
+// Audit hooks
+export {
+  useAuditLogList,
+  useAuditLog,
+  useAuditLogStats,
+} from './use-audit';
+
+// Template hooks
+export {
+  useTemplateList,
+  useTemplate,
+  useTemplateCategories,
+  useCreateTemplate,
+  useUpdateTemplate,
+  useDeleteTemplate,
+  useDuplicateTemplate,
+} from './use-templates';
+
+// File Tracking hooks
+export {
+  useFileTrackerList,
+  useFileTracker,
+  useFileTrackerStats,
+  useFileTrackerCategories,
+  useCreateFileTracker,
+  useUpdateFileTracker,
+  useDeleteFileTracker,
+  useCloseFileTracker,
+  useReopenFileTracker,
+  useLinkDocument,
+  useUnlinkDocument,
+} from './use-file-tracking';
+
+// Reports hooks
+export {
+  useReportsOverview,
+  useMonthlyTrends,
+  useDepartmentWorkload,
+  useSlaMetrics,
+} from './use-reports';
+
+// Search hooks
+export {
+  useGlobalSearch,
+  useQuickSearch,
+  useSearchSuggestions,
+} from './use-search';
+
 // Re-export existing hooks
 export { useIsMobile } from './use-mobile';
 export { useToast, toast } from './use-toast';

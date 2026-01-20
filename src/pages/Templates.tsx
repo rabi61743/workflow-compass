@@ -9,8 +9,11 @@ import {
   Search,
   Filter,
   MoreHorizontal,
+  Loader2,
 } from 'lucide-react';
-import { mockLetterTemplates } from '@/lib/mock-data';
+import { useTemplateList, useCreateTemplate, useUpdateTemplate, useDeleteTemplate, useDuplicateTemplate } from '@/hooks/use-templates';
+import { useDebounce } from '@/hooks/use-debounce';
+import { LetterTemplate } from '@/lib/api/templates';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -45,8 +48,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { toast } from 'sonner';
 
@@ -61,12 +64,11 @@ interface TemplateFormData {
 export default function Templates() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [templates, setTemplates] = useState(mockLetterTemplates);
   
   const [templateDialog, setTemplateDialog] = useState<{
     open: boolean;
     mode: 'create' | 'edit';
-    template: typeof mockLetterTemplates[0] | null;
+    template: LetterTemplate | null;
   }>({ open: false, mode: 'create', template: null });
   
   const [formData, setFormData] = useState<TemplateFormData>({
@@ -77,23 +79,29 @@ export default function Templates() {
   
   const [previewDialog, setPreviewDialog] = useState<{
     open: boolean;
-    template: typeof mockLetterTemplates[0] | null;
+    template: LetterTemplate | null;
   }>({ open: false, template: null });
-  
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const filteredTemplates = templates.filter((template) => {
-    const matchesSearch = template.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || template.category === categoryFilter;
-    return matchesSearch && matchesCategory;
+  const debouncedSearch = useDebounce(searchQuery, 300);
+
+  // API hooks
+  const { data: templatesData, isLoading } = useTemplateList({
+    search: debouncedSearch || undefined,
+    category: categoryFilter !== 'all' ? categoryFilter : undefined,
   });
+  const createTemplate = useCreateTemplate();
+  const updateTemplate = useUpdateTemplate();
+  const deleteTemplate = useDeleteTemplate();
+  const duplicateTemplate = useDuplicateTemplate();
+
+  const templates = templatesData?.results || [];
 
   const openCreateDialog = () => {
     setFormData({ name: '', category: '', content: '<p></p>' });
     setTemplateDialog({ open: true, mode: 'create', template: null });
   };
 
-  const openEditDialog = (template: typeof mockLetterTemplates[0]) => {
+  const openEditDialog = (template: LetterTemplate) => {
     setFormData({
       name: template.name,
       category: template.category,
@@ -113,53 +121,43 @@ export default function Templates() {
       return;
     }
 
-    setIsSubmitting(true);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      
-      if (templateDialog.mode === 'create') {
-        const newTemplate = {
-          id: `tpl-${Date.now()}`,
+    if (templateDialog.mode === 'create') {
+      createTemplate.mutate({
+        name: formData.name,
+        category: formData.category,
+        content: formData.content,
+      }, {
+        onSuccess: () => closeTemplateDialog(),
+      });
+    } else if (templateDialog.template) {
+      updateTemplate.mutate({
+        id: templateDialog.template.id,
+        data: {
           name: formData.name,
           category: formData.category,
           content: formData.content,
-        };
-        setTemplates([...templates, newTemplate]);
-        toast.success('Template created successfully');
-      } else {
-        setTemplates(templates.map((t) =>
-          t.id === templateDialog.template?.id
-            ? { ...t, name: formData.name, category: formData.category, content: formData.content }
-            : t
-        ));
-        toast.success('Template updated successfully');
-      }
-      closeTemplateDialog();
-    } catch (error) {
-      toast.error('Operation failed');
-    } finally {
-      setIsSubmitting(false);
+        },
+      }, {
+        onSuccess: () => closeTemplateDialog(),
+      });
     }
   };
 
-  const handleDelete = async (id: string) => {
-    try {
-      setTemplates(templates.filter((t) => t.id !== id));
-      toast.success('Template deleted');
-    } catch (error) {
-      toast.error('Failed to delete template');
-    }
+  const handleDelete = (id: string) => {
+    deleteTemplate.mutate(id);
   };
 
-  const handleDuplicate = (template: typeof mockLetterTemplates[0]) => {
-    const duplicate = {
-      ...template,
-      id: `tpl-${Date.now()}`,
-      name: `${template.name} (Copy)`,
-    };
-    setTemplates([...templates, duplicate]);
-    toast.success('Template duplicated');
+  const handleDuplicate = (id: string) => {
+    duplicateTemplate.mutate(id);
   };
+
+  const isSubmitting = createTemplate.isPending || updateTemplate.isPending;
+
+  // Calculate stats
+  const categoryStats = categories.slice(0, 3).map(cat => ({
+    category: cat,
+    count: templates.filter(t => t.category === cat).length,
+  }));
 
   return (
     <div className="space-y-6">
@@ -180,16 +178,14 @@ export default function Templates() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Templates</CardDescription>
-            <CardTitle className="text-3xl">{templates.length}</CardTitle>
+            <CardTitle className="text-3xl">{templatesData?.count || templates.length}</CardTitle>
           </CardHeader>
         </Card>
-        {categories.slice(0, 3).map((cat) => (
-          <Card key={cat}>
+        {categoryStats.map((stat) => (
+          <Card key={stat.category}>
             <CardHeader className="pb-2">
-              <CardDescription>{cat}</CardDescription>
-              <CardTitle className="text-3xl">
-                {templates.filter((t) => t.category === cat).length}
-              </CardTitle>
+              <CardDescription>{stat.category}</CardDescription>
+              <CardTitle className="text-3xl">{stat.count}</CardTitle>
             </CardHeader>
           </Card>
         ))}
@@ -225,98 +221,113 @@ export default function Templates() {
       </Card>
 
       {/* Templates Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredTemplates.length === 0 ? (
-          <Card className="col-span-full">
-            <CardContent className="py-12 text-center">
-              <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium mb-1">No templates found</h3>
-              <p className="text-muted-foreground">
-                {searchQuery || categoryFilter !== 'all'
-                  ? 'Try adjusting your filters'
-                  : 'Create your first template to get started'}
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          filteredTemplates.map((template) => (
-            <Card key={template.id} className="flex flex-col">
+      {isLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i}>
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <FileText className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-base line-clamp-1">{template.name}</CardTitle>
-                      <Badge variant="outline" className="mt-1">{template.category}</Badge>
-                    </div>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => setPreviewDialog({ open: true, template })}>
-                        <Eye className="mr-2 h-4 w-4" />
-                        Preview
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => openEditDialog(template)}>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDuplicate(template)}>
-                        <Copy className="mr-2 h-4 w-4" />
-                        Duplicate
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => handleDelete(template.id)}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                <Skeleton className="h-12 w-full" />
               </CardHeader>
-              <CardContent className="flex-1">
-                <div
-                  className="text-sm text-muted-foreground line-clamp-4 prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: template.content }}
-                />
-              </CardContent>
-              <CardContent className="pt-0">
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setPreviewDialog({ open: true, template })}
-                  >
-                    <Eye className="mr-2 h-4 w-4" />
-                    Preview
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => openEditDialog(template)}
-                  >
-                    <Edit className="mr-2 h-4 w-4" />
-                    Edit
-                  </Button>
-                </div>
+              <CardContent>
+                <Skeleton className="h-20 w-full" />
               </CardContent>
             </Card>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {templates.length === 0 ? (
+            <Card className="col-span-full">
+              <CardContent className="py-12 text-center">
+                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-medium mb-1">No templates found</h3>
+                <p className="text-muted-foreground">
+                  {searchQuery || categoryFilter !== 'all'
+                    ? 'Try adjusting your filters'
+                    : 'Create your first template to get started'}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            templates.map((template) => (
+              <Card key={template.id} className="flex flex-col">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-primary/10">
+                        <FileText className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base line-clamp-1">{template.name}</CardTitle>
+                        <Badge variant="outline" className="mt-1">{template.category}</Badge>
+                      </div>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => setPreviewDialog({ open: true, template })}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          Preview
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEditDialog(template)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDuplicate(template.id)}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => handleDelete(template.id)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-1">
+                  <div
+                    className="text-sm text-muted-foreground line-clamp-4 prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: template.content }}
+                  />
+                </CardContent>
+                <CardContent className="pt-0">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setPreviewDialog({ open: true, template })}
+                    >
+                      <Eye className="mr-2 h-4 w-4" />
+                      Preview
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => openEditDialog(template)}
+                    >
+                      <Edit className="mr-2 h-4 w-4" />
+                      Edit
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      )}
 
       {/* Create/Edit Dialog */}
       <Dialog open={templateDialog.open} onOpenChange={(open) => !open && closeTemplateDialog()}>
@@ -378,7 +389,12 @@ export default function Templates() {
               Cancel
             </Button>
             <Button onClick={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting ? 'Saving...' : templateDialog.mode === 'create' ? 'Create' : 'Save'}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : templateDialog.mode === 'create' ? 'Create' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>

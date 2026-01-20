@@ -1,13 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { format } from 'date-fns';
 import {
   Search,
   Filter,
   Download,
   Eye,
-  FileText,
   User,
-  Calendar,
   Clock,
   Activity,
   LogIn,
@@ -18,7 +16,11 @@ import {
   Forward,
   CheckCircle2,
   XCircle,
+  Loader2,
 } from 'lucide-react';
+import { useAuditLogList, useAuditLogStats } from '@/hooks/use-audit';
+import { useDebounce } from '@/hooks/use-debounce';
+import { AuditLog } from '@/lib/api/audit';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -51,100 +53,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { cn } from '@/lib/utils';
-
-// Mock audit logs
-const mockAuditLogs = [
-  {
-    id: 'log-001',
-    action: 'create',
-    module: 'darta',
-    description: 'Created new Darta #2081-004',
-    userId: 'usr-002',
-    userName: 'Sita Sharma',
-    ipAddress: '192.168.1.100',
-    timestamp: '2024-11-13T14:30:00Z',
-    details: { dartaNumber: '2081-004', subject: 'New incoming letter' },
-  },
-  {
-    id: 'log-002',
-    action: 'forward',
-    module: 'darta',
-    description: 'Forwarded Darta #2081-001 to Hari Prasad Acharya',
-    userId: 'usr-002',
-    userName: 'Sita Sharma',
-    ipAddress: '192.168.1.100',
-    timestamp: '2024-11-13T14:25:00Z',
-    details: { dartaNumber: '2081-001', toUser: 'Hari Prasad Acharya' },
-  },
-  {
-    id: 'log-003',
-    action: 'approve',
-    module: 'chalani',
-    description: 'Approved Chalani #CH-2081-002',
-    userId: 'usr-004',
-    userName: 'Dr. Krishna Bahadur KC',
-    ipAddress: '192.168.1.101',
-    timestamp: '2024-11-13T11:00:00Z',
-    details: { chalaniNumber: 'CH-2081-002' },
-  },
-  {
-    id: 'log-004',
-    action: 'login',
-    module: 'auth',
-    description: 'User logged in successfully',
-    userId: 'usr-001',
-    userName: 'Ram Bahadur Thapa',
-    ipAddress: '192.168.1.102',
-    timestamp: '2024-11-13T09:00:00Z',
-    details: { browser: 'Chrome 119', os: 'Windows 11' },
-  },
-  {
-    id: 'log-005',
-    action: 'edit',
-    module: 'users',
-    description: 'Updated user permissions for Gita Kumari Rai',
-    userId: 'usr-001',
-    userName: 'Ram Bahadur Thapa',
-    ipAddress: '192.168.1.102',
-    timestamp: '2024-11-13T08:45:00Z',
-    details: { targetUser: 'Gita Kumari Rai', changes: 'Added darta:create permission' },
-  },
-  {
-    id: 'log-006',
-    action: 'delete',
-    module: 'darta',
-    description: 'Deleted attachment from Darta #2081-002',
-    userId: 'usr-003',
-    userName: 'Hari Prasad Acharya',
-    ipAddress: '192.168.1.103',
-    timestamp: '2024-11-12T16:30:00Z',
-    details: { dartaNumber: '2081-002', fileName: 'old_document.pdf' },
-  },
-  {
-    id: 'log-007',
-    action: 'reject',
-    module: 'darta',
-    description: 'Rejected Darta #2081-003 with remarks',
-    userId: 'usr-004',
-    userName: 'Dr. Krishna Bahadur KC',
-    ipAddress: '192.168.1.101',
-    timestamp: '2024-11-12T15:00:00Z',
-    details: { dartaNumber: '2081-003', reason: 'Incomplete documentation' },
-  },
-  {
-    id: 'log-008',
-    action: 'logout',
-    module: 'auth',
-    description: 'User logged out',
-    userId: 'usr-002',
-    userName: 'Sita Sharma',
-    ipAddress: '192.168.1.100',
-    timestamp: '2024-11-12T17:30:00Z',
-    details: {},
-  },
-];
 
 const actionIcons: Record<string, React.ElementType> = {
   create: Plus,
@@ -174,27 +85,30 @@ export default function AuditLogs() {
   const [searchQuery, setSearchQuery] = useState('');
   const [actionFilter, setActionFilter] = useState<string>('all');
   const [moduleFilter, setModuleFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [detailDialog, setDetailDialog] = useState<{
     open: boolean;
-    log: typeof mockAuditLogs[0] | null;
+    log: AuditLog | null;
   }>({ open: false, log: null });
 
-  const filteredLogs = useMemo(() => {
-    return mockAuditLogs.filter((log) => {
-      const matchesSearch =
-        log.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        log.userName.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const matchesAction = actionFilter === 'all' || log.action === actionFilter;
-      const matchesModule = moduleFilter === 'all' || log.module === moduleFilter;
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
-      return matchesSearch && matchesAction && matchesModule;
-    });
-  }, [searchQuery, actionFilter, moduleFilter]);
+  const { data: logsData, isLoading } = useAuditLogList({
+    page,
+    page_size: pageSize,
+    search: debouncedSearch || undefined,
+    action: actionFilter !== 'all' ? actionFilter : undefined,
+    module: moduleFilter !== 'all' ? moduleFilter : undefined,
+  });
+
+  const { data: stats } = useAuditLogStats();
+
+  const logs = logsData?.results || [];
+  const totalCount = logsData?.count || 0;
 
   const getActionIcon = (action: string) => {
-    const Icon = actionIcons[action] || Activity;
-    return Icon;
+    return actionIcons[action] || Activity;
   };
 
   return (
@@ -216,25 +130,25 @@ export default function AuditLogs() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Logs Today</CardDescription>
-            <CardTitle className="text-3xl">247</CardTitle>
+            <CardTitle className="text-3xl">{stats?.total_today || 0}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Document Actions</CardDescription>
-            <CardTitle className="text-3xl text-blue-600">156</CardTitle>
+            <CardTitle className="text-3xl text-blue-600">{stats?.document_actions || 0}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>User Logins</CardDescription>
-            <CardTitle className="text-3xl text-green-600">43</CardTitle>
+            <CardTitle className="text-3xl text-green-600">{stats?.user_logins || 0}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Failed Attempts</CardDescription>
-            <CardTitle className="text-3xl text-red-600">5</CardTitle>
+            <CardTitle className="text-3xl text-red-600">{stats?.failed_attempts || 0}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -291,74 +205,102 @@ export default function AuditLogs() {
       {/* Logs Table */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Action</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="hidden md:table-cell">User</TableHead>
-                <TableHead className="hidden lg:table-cell">IP Address</TableHead>
-                <TableHead>Timestamp</TableHead>
-                <TableHead className="text-right">Details</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredLogs.length === 0 ? (
+          {isLoading ? (
+            <div className="p-6 space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <Skeleton className="h-10 w-10 rounded-lg" />
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-3 w-1/3" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    No logs found matching your criteria
-                  </TableCell>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="hidden md:table-cell">User</TableHead>
+                  <TableHead className="hidden lg:table-cell">IP Address</TableHead>
+                  <TableHead>Timestamp</TableHead>
+                  <TableHead className="text-right">Details</TableHead>
                 </TableRow>
-              ) : (
-                filteredLogs.map((log) => {
-                  const ActionIcon = getActionIcon(log.action);
-                  return (
-                    <TableRow key={log.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className={cn('p-2 rounded-lg', actionColors[log.action])}>
-                            <ActionIcon className="h-4 w-4" />
+              </TableHeader>
+              <TableBody>
+                {logs.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      No logs found matching your criteria
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  logs.map((log) => {
+                    const ActionIcon = getActionIcon(log.action);
+                    return (
+                      <TableRow key={log.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className={cn('p-2 rounded-lg', actionColors[log.action] || 'bg-gray-100')}>
+                              <ActionIcon className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="font-medium capitalize">{log.action}</p>
+                              <Badge variant="outline" className="text-xs">{log.module}</Badge>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-medium capitalize">{log.action}</p>
-                            <Badge variant="outline" className="text-xs">{log.module}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm line-clamp-2">{log.description}</p>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm">{log.userName}</span>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <p className="text-sm line-clamp-2">{log.description}</p>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">{log.userName}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell">
-                        <span className="text-sm font-mono">{log.ipAddress}</span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Clock className="h-4 w-4" />
-                          {format(new Date(log.timestamp), 'PP p')}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDetailDialog({ open: true, log })}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          <span className="text-sm font-mono">{log.ipAddress}</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Clock className="h-4 w-4" />
+                            {format(new Date(log.timestamp), 'PP p')}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setDetailDialog({ open: true, log })}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
+        {totalCount > pageSize && (
+          <div className="border-t p-4">
+            <DataTablePagination
+              currentPage={page}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+            />
+          </div>
+        )}
       </Card>
 
       {/* Detail Dialog */}
@@ -403,7 +345,7 @@ export default function AuditLogs() {
                 <p className="text-sm">{detailDialog.log.description}</p>
               </div>
 
-              {Object.keys(detailDialog.log.details).length > 0 && (
+              {Object.keys(detailDialog.log.details || {}).length > 0 && (
                 <div>
                   <p className="text-sm text-muted-foreground mb-2">Additional Details</p>
                   <div className="bg-muted rounded-lg p-3">
