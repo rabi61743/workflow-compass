@@ -16,6 +16,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Transform API user to frontend User type
 function transformUser(apiUser: any): User {
+  const permissionMap = new Map<string, Set<string>>();
+  (apiUser.permissions || []).forEach((p: any) => {
+    if (!permissionMap.has(p.module)) {
+      permissionMap.set(p.module, new Set());
+    }
+    permissionMap.get(p.module)!.add(p.action);
+  });
+
   return {
     id: apiUser.id,
     email: apiUser.email,
@@ -25,9 +33,9 @@ function transformUser(apiUser: any): User {
     officeId: apiUser.office || '',
     officeName: apiUser.office_name || '',
     avatar: apiUser.avatar,
-    permissions: (apiUser.permissions || []).map((p: any) => ({
-      module: p.module,
-      actions: [p.action]
+    permissions: Array.from(permissionMap.entries()).map(([module, actions]) => ({
+      module,
+      actions: Array.from(actions),
     })),
     isActive: true,
     createdAt: new Date().toISOString(),

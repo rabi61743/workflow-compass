@@ -30,13 +30,15 @@ export default function Dashboard() {
   // Fetch pending tasks
   const { 
     data: tasksData, 
-    isLoading: tasksLoading 
+    isLoading: tasksLoading,
+    refetch: refetchTasks,
   } = useMyTasks({ status: 'pending' });
   
   // Fetch SLA alerts
   const { 
     data: notificationsData, 
-    isLoading: notificationsLoading 
+    isLoading: notificationsLoading,
+    refetch: refetchNotifications,
   } = useNotificationList({ 
     page_size: 10,
     type: 'sla_warning' 
@@ -70,7 +72,11 @@ export default function Dashboard() {
           <Button 
             variant="outline" 
             size="sm"
-            onClick={() => refetchStats()}
+            onClick={() => {
+              refetchStats();
+              refetchTasks();
+              refetchNotifications();
+            }}
             disabled={isLoading}
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -166,9 +172,7 @@ export default function Dashboard() {
                   {stats?.completed_today || 0}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  <span className="text-primary font-medium">
-                    {stats?.pending_tasks || 0}
-                  </span> tasks pending
+                  Tasks completed today
                 </p>
               </>
             )}

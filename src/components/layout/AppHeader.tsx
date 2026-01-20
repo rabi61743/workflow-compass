@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNotificationList, useUnreadNotificationCount } from '@/hooks';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,15 +14,15 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Bell, LogOut, User, Settings } from 'lucide-react';
-import { mockNotifications } from '@/lib/mock-data';
 import { Separator } from '@/components/ui/separator';
 
 export function AppHeader() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [notifications] = useState(mockNotifications);
-
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const { data: notificationsData } = useNotificationList({ page_size: 5 });
+  const { data: unreadData } = useUnreadNotificationCount();
+  const notifications = notificationsData?.results || [];
+  const unreadCount = unreadData?.count || 0;
 
   const handleLogout = () => {
     logout();

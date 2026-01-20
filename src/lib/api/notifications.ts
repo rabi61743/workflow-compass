@@ -24,6 +24,16 @@ interface NotificationPreferences {
   daily_digest: boolean;
 }
 
+const normalizeNotification = (notification: any): Notification => ({
+  id: notification.id,
+  type: notification.type,
+  title: notification.title,
+  message: notification.message,
+  isRead: notification.is_read ?? notification.isRead ?? false,
+  createdAt: notification.created_at ?? notification.createdAt ?? '',
+  linkTo: notification.link_to ?? notification.linkTo ?? undefined,
+});
+
 export const notificationsApi = {
   async list(params: NotificationListParams = {}): Promise<PaginatedResponse<Notification>> {
     const queryParams = new URLSearchParams();
@@ -34,22 +44,26 @@ export const notificationsApi = {
     });
     
     const endpoint = `/notifications/?${queryParams.toString()}`;
-    const response = await apiClient.get<PaginatedResponse<Notification>>(endpoint);
-    return response.data;
+    const response = await apiClient.get<PaginatedResponse<any>>(endpoint);
+    const data = response.data;
+    return {
+      ...data,
+      results: (data.results || []).map(normalizeNotification),
+    };
   },
 
   async getUnreadCount(): Promise<{ count: number }> {
-    const response = await apiClient.get<{ count: number }>('/notifications/unread-count/');
+    const response = await apiClient.get<{ count: number }>('/notifications/unread_count/');
     return response.data;
   },
 
   async markAsRead(id: string): Promise<Notification> {
-    const response = await apiClient.post<Notification>(`/notifications/${id}/mark-read/`);
-    return response.data;
+    const response = await apiClient.post<any>(`/notifications/${id}/mark_read/`);
+    return normalizeNotification(response.data);
   },
 
   async markAllAsRead(): Promise<{ updated_count: number }> {
-    const response = await apiClient.post<{ updated_count: number }>('/notifications/mark-all-read/');
+    const response = await apiClient.post<{ updated_count: number }>('/notifications/mark_all_read/');
     return response.data;
   },
 
