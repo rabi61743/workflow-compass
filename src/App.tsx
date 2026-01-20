@@ -5,6 +5,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
 import DartaList from "@/pages/DartaList";
 import NewDarta from "@/pages/NewDarta";
@@ -32,7 +34,10 @@ const App = () => {
         <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* Public routes */}
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             
             {/* Protected routes with layout */}
             <Route element={<AppLayout />}>
