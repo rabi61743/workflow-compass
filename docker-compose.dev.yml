@@ -17,11 +17,16 @@ services:
       dockerfile: Dockerfile.dev
     environment:
       - DJANGO_DEBUG=True
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend,0.0.0.0
     volumes:
       - ./backend:/app
+      - backend_static:/app/staticfiles
+      - backend_media:/app/media
     ports:
       - "8000:8000"
-    command: python manage.py runserver 0.0.0.0:8000
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py runserver 0.0.0.0:8000"
 
   celery:
     build:
@@ -29,6 +34,7 @@ services:
       dockerfile: Dockerfile.dev
     volumes:
       - ./backend:/app
+      - backend_media:/app/media
     command: celery -A config worker -l debug
 
   celery-beat:
@@ -50,3 +56,6 @@ services:
       - "5173:5173"
     environment:
       - VITE_API_URL=http://localhost:8000/api
+      - CHOKIDAR_USEPOLLING=true
+    stdin_open: true
+    tty: true

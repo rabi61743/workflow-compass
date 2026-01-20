@@ -5,9 +5,23 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+
+def health_check(request):
+    """Simple health check endpoint for Docker and load balancers."""
+    return JsonResponse({
+        'status': 'healthy',
+        'service': 'wms-backend',
+        'version': '1.0.0'
+    })
+
+
 urlpatterns = [
+    # Health check (must be before auth)
+    path('api/health/', health_check, name='health_check'),
+    
     path('admin/', admin.site.urls),
     
     # JWT Authentication
