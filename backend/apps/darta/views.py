@@ -32,6 +32,7 @@ class DartaLetterViewSet(viewsets.ModelViewSet):
     queryset = DartaLetter.objects.select_related(
         'current_handler', 'document_type', 'office', 'created_by', 'file_id'
     ).prefetch_related('recipients')
+    lookup_field = 'darta_number'
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['status', 'priority', 'confidentiality', 'fiscal_year', 'office', 'current_handler']
     search_fields = ['darta_number', 'subject', 'sender_name', 'sender_org']
@@ -98,7 +99,7 @@ class DartaLetterViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
-    def forward(self, request, pk=None):
+    def forward(self, request, *args, **kwargs):
         """Forward darta to another user."""
         darta = self.get_object()
         to_user_id = request.data.get('to_user')
@@ -140,7 +141,7 @@ class DartaLetterViewSet(viewsets.ModelViewSet):
         return Response(DartaDetailSerializer(darta).data)
     
     @action(detail=True, methods=['post'])
-    def return_back(self, request, pk=None):
+    def return_back(self, request, *args, **kwargs):
         """Return darta to previous handler."""
         darta = self.get_object()
         remarks = request.data.get('remarks', '')
@@ -176,7 +177,7 @@ class DartaLetterViewSet(viewsets.ModelViewSet):
         return Response(DartaDetailSerializer(darta).data)
     
     @action(detail=True, methods=['post'])
-    def approve(self, request, pk=None):
+    def approve(self, request, *args, **kwargs):
         """Approve darta."""
         darta = self.get_object()
         remarks = request.data.get('remarks', '')
@@ -196,7 +197,7 @@ class DartaLetterViewSet(viewsets.ModelViewSet):
         return Response(DartaDetailSerializer(darta).data)
     
     @action(detail=True, methods=['post'])
-    def terminate(self, request, pk=None):
+    def terminate(self, request, *args, **kwargs):
         """Terminate/close darta."""
         darta = self.get_object()
         remarks = request.data.get('remarks', '')
@@ -214,6 +215,13 @@ class DartaLetterViewSet(viewsets.ModelViewSet):
         darta.save()
         
         return Response(DartaDetailSerializer(darta).data)
+
+    @action(detail=True, methods=['get'])
+    def workflow(self, request, darta_number=None):
+        """Get workflow history for this darta."""
+        darta = self.get_object()
+        serializer = DartaDetailSerializer(darta)
+        return Response(serializer.data.get('workflow_steps', []))
 
 
 class DocumentTypeViewSet(viewsets.ModelViewSet):

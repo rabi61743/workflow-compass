@@ -222,7 +222,7 @@ export default function DartaList() {
                       <TableRow
                         key={letter.id}
                         className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => navigate(`/darta/${letter.id}`)}
+                        onClick={() => navigate(`/darta/${letter.dartaNumber}`)}
                       >
                         <TableCell className="font-medium">{letter.dartaNumber}</TableCell>
                         <TableCell>
@@ -248,7 +248,7 @@ export default function DartaList() {
                             size="icon"
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigate(`/darta/${letter.id}`);
+                              navigate(`/darta/${letter.dartaNumber}`);
                             }}
                           >
                             <Eye className="h-4 w-4" />

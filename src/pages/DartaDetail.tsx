@@ -113,7 +113,7 @@ export default function DartaDetail() {
       toUserId: step.to_user,
       toUserName: step.to_user_name || '',
       remarks: step.remarks || '',
-      timestamp: step.created_at,
+      timestamp: step.timestamp || step.created_at,
     }));
   }, [workflowData]);
 
@@ -229,6 +229,13 @@ export default function DartaDetail() {
       default:
         return 'bg-primary';
     }
+  };
+
+  const formatTimestamp = (value?: string) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return format(date, 'PPp');
   };
 
   const openActionDialog = (type: ActionType) => {
@@ -497,7 +504,7 @@ export default function DartaDetail() {
                             <div className="flex items-center gap-2 mb-1">
                               <span className="font-medium capitalize">{step.action}</span>
                               <span className="text-xs text-muted-foreground">
-                                {format(new Date(step.timestamp), 'PPp')}
+                                {formatTimestamp(step.timestamp)}
                               </span>
                             </div>
                             <p className="text-sm text-muted-foreground mb-2">

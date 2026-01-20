@@ -178,8 +178,8 @@ class ChalaniLetterViewSet(viewsets.ModelViewSet):
         
         return Response(ChalaniDetailSerializer(chalani).data)
     
-    @action(detail=True, methods=['post'])
-    def dispatch(self, request, pk=None):
+    @action(detail=True, methods=['post'], url_path='dispatch')
+    def dispatch_letter(self, request, pk=None):
         """Dispatch chalani (assign number and mark as sent)."""
         chalani = self.get_object()
         
@@ -208,6 +208,13 @@ class ChalaniLetterViewSet(viewsets.ModelViewSet):
             self._create_auto_darta(chalani)
         
         return Response(ChalaniDetailSerializer(chalani).data)
+
+    @action(detail=True, methods=['get'])
+    def workflow(self, request, pk=None):
+        """Get workflow history for this chalani."""
+        chalani = self.get_object()
+        serializer = ChalaniDetailSerializer(chalani)
+        return Response(serializer.data.get('workflow_steps', []))
     
     def _create_auto_darta(self, chalani):
         """Create Darta in receiving office when internal Chalani is dispatched."""

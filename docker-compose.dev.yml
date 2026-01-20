@@ -3,10 +3,6 @@ version: '3.8'
 # Development override - use with: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 services:
-  db:
-    ports:
-      - "5432:5432"
-
   redis:
     ports:
       - "6379:6379"
@@ -53,7 +49,7 @@ services:
       - .:/app
       - /app/node_modules
     ports:
-      - "5173:5173"
+      - "8080:8080"
     environment:
       - VITE_API_URL=http://localhost:8000/api
       - CHOKIDAR_USEPOLLING=true
