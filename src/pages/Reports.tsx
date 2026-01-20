@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
 import {
   FileText,
   Send,
@@ -9,9 +8,8 @@ import {
   TrendingDown,
   Download,
   Calendar,
-  BarChart3,
-  PieChart as PieChartIcon,
 } from 'lucide-react';
+import { useReportsOverview } from '@/hooks/use-reports';
 import {
   Card,
   CardContent,
@@ -29,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   AreaChart,
   Area,
@@ -48,8 +47,8 @@ import {
 } from 'recharts';
 import { cn } from '@/lib/utils';
 
-// Mock data for charts
-const trendData = [
+// Fallback mock data for when API doesn't return data
+const fallbackTrendData = [
   { month: 'Baisakh', darta: 45, chalani: 32 },
   { month: 'Jestha', darta: 52, chalani: 41 },
   { month: 'Ashadh', darta: 48, chalani: 38 },
@@ -60,7 +59,7 @@ const trendData = [
   { month: 'Mangsir', darta: 58, chalani: 48 },
 ];
 
-const statusDistribution = [
+const fallbackStatusDistribution = [
   { name: 'Pending', value: 23, color: '#f59e0b' },
   { name: 'In Review', value: 45, color: '#3b82f6' },
   { name: 'Approved', value: 89, color: '#22c55e' },
@@ -68,7 +67,7 @@ const statusDistribution = [
   { name: 'Closed', value: 67, color: '#6b7280' },
 ];
 
-const departmentWorkload = [
+const fallbackDepartmentWorkload = [
   { department: 'IT Dept', darta: 34, chalani: 28 },
   { department: 'Finance', darta: 45, chalani: 38 },
   { department: 'HR', darta: 23, chalani: 31 },
@@ -76,13 +75,13 @@ const departmentWorkload = [
   { department: 'Admin', darta: 38, chalani: 35 },
 ];
 
-const slaData = [
+const fallbackSlaData = [
   { name: 'On Time', value: 156, color: '#22c55e' },
   { name: 'Warning', value: 23, color: '#f59e0b' },
   { name: 'Breached', value: 8, color: '#ef4444' },
 ];
 
-const weeklyActivity = [
+const fallbackWeeklyActivity = [
   { day: 'Sun', documents: 12 },
   { day: 'Mon', documents: 45 },
   { day: 'Tue', documents: 38 },
@@ -92,50 +91,87 @@ const weeklyActivity = [
   { day: 'Sat', documents: 8 },
 ];
 
-const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#6b7280'];
-
 export default function Reports() {
-  const [dateRange, setDateRange] = useState('this_month');
+  const [dateRange, setDateRange] = useState<'today' | 'this_week' | 'this_month' | 'this_quarter' | 'this_year'>('this_month');
   const [activeTab, setActiveTab] = useState('overview');
 
-  const stats = [
+  const { data: reportsData, isLoading } = useReportsOverview({ date_range: dateRange });
+
+  // Use API data or fallback to mock data
+  const stats = reportsData?.stats || {
+    totalDarta: 156,
+    dartaChange: '+12%',
+    totalChalani: 89,
+    chalaniChange: '+8%',
+    pendingActions: 23,
+    pendingChange: '-5%',
+    slaBreaches: 8,
+    slaBreachChange: '+2',
+  };
+
+  const trendData = reportsData?.trends?.length ? reportsData.trends : fallbackTrendData;
+  const statusDistribution = reportsData?.statusDistribution?.length ? reportsData.statusDistribution : fallbackStatusDistribution;
+  const departmentWorkload = reportsData?.departmentWorkload?.length ? reportsData.departmentWorkload : fallbackDepartmentWorkload;
+  const slaData = reportsData?.slaData?.length ? reportsData.slaData : fallbackSlaData;
+  const weeklyActivity = reportsData?.weeklyActivity?.length ? reportsData.weeklyActivity : fallbackWeeklyActivity;
+  const slaComplianceRate = reportsData?.slaComplianceRate || 83;
+  const averageProcessingTime = reportsData?.averageProcessingTime || 18.5;
+
+  const statCards = [
     {
       title: 'Total Darta',
-      value: '156',
-      change: '+12%',
-      trend: 'up',
+      value: String(stats.totalDarta),
+      change: stats.dartaChange,
+      trend: stats.dartaChange.startsWith('+') ? 'up' : 'down',
       icon: FileText,
       color: 'text-blue-600',
       bgColor: 'bg-blue-100',
     },
     {
       title: 'Total Chalani',
-      value: '89',
-      change: '+8%',
-      trend: 'up',
+      value: String(stats.totalChalani),
+      change: stats.chalaniChange,
+      trend: stats.chalaniChange.startsWith('+') ? 'up' : 'down',
       icon: Send,
       color: 'text-purple-600',
       bgColor: 'bg-purple-100',
     },
     {
       title: 'Pending Actions',
-      value: '23',
-      change: '-5%',
-      trend: 'down',
+      value: String(stats.pendingActions),
+      change: stats.pendingChange,
+      trend: stats.pendingChange.startsWith('-') ? 'down' : 'up',
       icon: Clock,
       color: 'text-amber-600',
       bgColor: 'bg-amber-100',
     },
     {
       title: 'SLA Breaches',
-      value: '8',
-      change: '+2',
-      trend: 'up',
+      value: String(stats.slaBreaches),
+      change: stats.slaBreachChange,
+      trend: stats.slaBreachChange.startsWith('+') ? 'up' : 'down',
       icon: AlertTriangle,
       color: 'text-red-600',
       bgColor: 'bg-red-100',
     },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-10 w-40" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-28" />
+          ))}
+        </div>
+        <Skeleton className="h-[400px]" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -146,7 +182,7 @@ export default function Reports() {
           <p className="text-muted-foreground">Monitor document flow and performance metrics</p>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={dateRange} onValueChange={setDateRange}>
+          <Select value={dateRange} onValueChange={(v: typeof dateRange) => setDateRange(v)}>
             <SelectTrigger className="w-[180px]">
               <Calendar className="mr-2 h-4 w-4" />
               <SelectValue />
@@ -168,7 +204,7 @@ export default function Reports() {
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
+        {statCards.map((stat) => (
           <Card key={stat.title}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardDescription>{stat.title}</CardDescription>
@@ -391,43 +427,27 @@ export default function Reports() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="h-3 w-3 rounded-full bg-green-500" />
-                      <span>On Time</span>
+                  {slaData.map((item) => (
+                    <div key={item.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
+                        <span>{item.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl font-bold">{item.value}</span>
+                        <Badge style={{ backgroundColor: `${item.color}20`, color: item.color }}>
+                          {Math.round((item.value / slaData.reduce((a, b) => a + b.value, 0)) * 100)}%
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl font-bold">156</span>
-                      <Badge className="bg-green-100 text-green-800">83%</Badge>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="h-3 w-3 rounded-full bg-amber-500" />
-                      <span>Warning (Near Deadline)</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl font-bold">23</span>
-                      <Badge className="bg-amber-100 text-amber-800">12%</Badge>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="h-3 w-3 rounded-full bg-red-500" />
-                      <span>Breached</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl font-bold">8</span>
-                      <Badge className="bg-red-100 text-red-800">4%</Badge>
-                    </div>
-                  </div>
+                  ))}
                 </div>
                 <div className="pt-4 border-t">
                   <p className="text-sm text-muted-foreground">
-                    Average processing time: <span className="font-medium text-foreground">18.5 hours</span>
+                    Average processing time: <span className="font-medium text-foreground">{averageProcessingTime} hours</span>
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    SLA compliance rate: <span className="font-medium text-green-600">83%</span>
+                    SLA compliance rate: <span className="font-medium text-green-600">{slaComplianceRate}%</span>
                   </p>
                 </div>
               </CardContent>

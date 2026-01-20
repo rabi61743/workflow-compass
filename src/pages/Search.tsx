@@ -3,23 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   Search as SearchIcon,
-  Filter,
   FileText,
   Send,
   Calendar,
-  Clock,
   ArrowUpRight,
   X,
   SlidersHorizontal,
+  Loader2,
 } from 'lucide-react';
-import { mockDartaLetters, mockChalaniLetters } from '@/lib/mock-data';
+import { useGlobalSearch } from '@/hooks/use-search';
+import { useDebounce } from '@/hooks/use-debounce';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -31,9 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import {
   Sheet,
   SheetContent,
@@ -44,87 +41,31 @@ import {
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
-type SearchResult = {
-  id: string;
-  type: 'darta' | 'chalani';
-  number: string;
-  subject: string;
-  date: string;
-  status: string;
-  priority: string;
-  party: string;
-  partyOrg: string;
-};
-
 export default function GlobalSearch() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [moduleFilter, setModuleFilter] = useState<string>('all');
+  const [moduleFilter, setModuleFilter] = useState<'all' | 'darta' | 'chalani'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
-  // Combine and transform data for search
-  const allDocuments: SearchResult[] = useMemo(() => {
-    const dartaResults: SearchResult[] = mockDartaLetters.map((d) => ({
-      id: d.id,
-      type: 'darta' as const,
-      number: d.dartaNumber,
-      subject: d.subject,
-      date: d.receivedDate,
-      status: d.status,
-      priority: d.priority,
-      party: d.senderName,
-      partyOrg: d.senderOrg,
-    }));
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
-    const chalaniResults: SearchResult[] = mockChalaniLetters.map((c) => ({
-      id: c.id,
-      type: 'chalani' as const,
-      number: c.chalaniNumber,
-      subject: c.subject,
-      date: c.createdAt,
-      status: c.status,
-      priority: c.priority,
-      party: c.receiverName,
-      partyOrg: c.receiverOrg,
-    }));
+  const hasActiveFilters = moduleFilter !== 'all' || statusFilter !== 'all' || priorityFilter !== 'all' || !!dateFrom || !!dateTo;
+  const shouldSearch = !!debouncedSearch.trim() || hasActiveFilters;
 
-    return [...dartaResults, ...chalaniResults];
-  }, []);
+  const { data: searchData, isLoading } = useGlobalSearch({
+    query: debouncedSearch || undefined,
+    module: moduleFilter !== 'all' ? moduleFilter : undefined,
+    status: statusFilter !== 'all' ? statusFilter : undefined,
+    priority: priorityFilter !== 'all' ? priorityFilter : undefined,
+    date_from: dateFrom || undefined,
+    date_to: dateTo || undefined,
+  }, shouldSearch);
 
-  const filteredResults = useMemo(() => {
-    if (!searchQuery.trim() && moduleFilter === 'all' && statusFilter === 'all' && priorityFilter === 'all' && !dateFrom && !dateTo) {
-      return [];
-    }
-
-    return allDocuments.filter((doc) => {
-      // Text search
-      const matchesSearch = !searchQuery.trim() || 
-        doc.number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        doc.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        doc.party.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        doc.partyOrg.toLowerCase().includes(searchQuery.toLowerCase());
-
-      // Module filter
-      const matchesModule = moduleFilter === 'all' || doc.type === moduleFilter;
-
-      // Status filter
-      const matchesStatus = statusFilter === 'all' || doc.status === statusFilter;
-
-      // Priority filter
-      const matchesPriority = priorityFilter === 'all' || doc.priority === priorityFilter;
-
-      // Date range filter
-      const docDate = new Date(doc.date);
-      const matchesDateFrom = !dateFrom || docDate >= new Date(dateFrom);
-      const matchesDateTo = !dateTo || docDate <= new Date(dateTo);
-
-      return matchesSearch && matchesModule && matchesStatus && matchesPriority && matchesDateFrom && matchesDateTo;
-    });
-  }, [searchQuery, moduleFilter, statusFilter, priorityFilter, dateFrom, dateTo, allDocuments]);
+  const results = searchData?.results || [];
 
   const clearFilters = () => {
     setModuleFilter('all');
@@ -134,9 +75,7 @@ export default function GlobalSearch() {
     setDateTo('');
   };
 
-  const hasActiveFilters = moduleFilter !== 'all' || statusFilter !== 'all' || priorityFilter !== 'all' || dateFrom || dateTo;
-
-  const navigateToDocument = (result: SearchResult) => {
+  const navigateToDocument = (result: { type: string; id: string }) => {
     navigate(`/${result.type}/${result.id}`);
   };
 
@@ -192,7 +131,7 @@ export default function GlobalSearch() {
             
             {/* Desktop Filters */}
             <div className="hidden lg:flex gap-2">
-              <Select value={moduleFilter} onValueChange={setModuleFilter}>
+              <Select value={moduleFilter} onValueChange={(v: typeof moduleFilter) => setModuleFilter(v)}>
                 <SelectTrigger className="w-[130px]">
                   <SelectValue placeholder="Module" />
                 </SelectTrigger>
@@ -247,7 +186,7 @@ export default function GlobalSearch() {
                 <div className="space-y-6 py-6">
                   <div className="space-y-2">
                     <Label>Document Type</Label>
-                    <Select value={moduleFilter} onValueChange={setModuleFilter}>
+                    <Select value={moduleFilter} onValueChange={(v: typeof moduleFilter) => setModuleFilter(v)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select type" />
                       </SelectTrigger>
@@ -345,18 +284,25 @@ export default function GlobalSearch() {
       </Card>
 
       {/* Results */}
-      {filteredResults.length > 0 ? (
+      {isLoading ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">Searching...</p>
+          </CardContent>
+        </Card>
+      ) : results.length > 0 ? (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">
               Search Results
-              <Badge variant="secondary" className="ml-2">{filteredResults.length}</Badge>
+              <Badge variant="secondary" className="ml-2">{searchData?.count || results.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <ScrollArea className="h-[500px]">
               <div className="divide-y">
-                {filteredResults.map((result) => (
+                {results.map((result) => (
                   <div
                     key={`${result.type}-${result.id}`}
                     className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer"
@@ -403,7 +349,7 @@ export default function GlobalSearch() {
             </ScrollArea>
           </CardContent>
         </Card>
-      ) : searchQuery.trim() || hasActiveFilters ? (
+      ) : shouldSearch ? (
         <Card>
           <CardContent className="py-12 text-center">
             <SearchIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />

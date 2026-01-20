@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
@@ -8,17 +8,20 @@ import {
   FolderClosed,
   FileText,
   Link2,
-  Clock,
+  Calendar,
+  Tag,
+  Filter,
   MoreHorizontal,
   Edit,
   Trash2,
   Eye,
   ArrowUpRight,
-  Calendar,
-  Tag,
-  Filter,
+  Send,
+  Loader2,
 } from 'lucide-react';
-import { mockDartaLetters, mockChalaniLetters } from '@/lib/mock-data';
+import { useFileTrackerList, useFileTrackerStats, useCreateFileTracker, useUpdateFileTracker, useDeleteFileTracker, useCloseFileTracker, useReopenFileTracker } from '@/hooks/use-file-tracking';
+import { useDebounce } from '@/hooks/use-debounce';
+import { FileTracker } from '@/lib/api/file-tracking';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -64,52 +67,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { cn } from '@/lib/utils';
-
-// Mock file trackers
-const mockFileTrackers = [
-  {
-    id: 'file-001',
-    fileNumber: 'F-2081-001',
-    title: 'Annual Budget Proposal FY 2081/82',
-    description: 'Budget planning and allocation documents for the upcoming fiscal year',
-    category: 'Budget',
-    status: 'open',
-    createdAt: '2024-10-15T10:00:00Z',
-    createdBy: 'Hari Prasad Acharya',
-    linkedDocuments: [
-      { type: 'darta', id: 'darta-001', number: '2081-001', subject: 'Request for Annual Report Submission' },
-      { type: 'chalani', id: 'chalani-001', number: 'CH-2081-001', subject: 'Annual Report Submission FY 2080/81' },
-    ],
-  },
-  {
-    id: 'file-002',
-    fileNumber: 'F-2081-002',
-    title: 'Infrastructure Development Project',
-    description: 'Documents related to network infrastructure upgrade project',
-    category: 'Projects',
-    status: 'open',
-    createdAt: '2024-11-01T09:00:00Z',
-    createdBy: 'Ram Bahadur Thapa',
-    linkedDocuments: [
-      { type: 'darta', id: 'darta-002', number: '2081-002', subject: 'Electricity Bill Dispute Resolution' },
-    ],
-  },
-  {
-    id: 'file-003',
-    fileNumber: 'F-2081-003',
-    title: 'Q3 Audit Documentation',
-    description: 'Internal audit findings and responses for Q3 2081',
-    category: 'Audit',
-    status: 'closed',
-    createdAt: '2024-11-08T14:00:00Z',
-    createdBy: 'Bishnu Prasad Poudel',
-    linkedDocuments: [
-      { type: 'darta', id: 'darta-003', number: '2081-003', subject: 'Quarterly Audit Findings' },
-    ],
-  },
-];
 
 const categories = ['Budget', 'Projects', 'Audit', 'HR', 'Legal', 'Operations', 'General'];
 
@@ -124,11 +84,13 @@ export default function FileTracking() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   
   const [fileDialog, setFileDialog] = useState<{
     open: boolean;
     mode: 'create' | 'edit';
-    file: typeof mockFileTrackers[0] | null;
+    file: FileTracker | null;
   }>({ open: false, mode: 'create', file: null });
   
   const [formData, setFormData] = useState<FileFormData>({
@@ -139,31 +101,35 @@ export default function FileTracking() {
   
   const [detailDialog, setDetailDialog] = useState<{
     open: boolean;
-    file: typeof mockFileTrackers[0] | null;
+    file: FileTracker | null;
   }>({ open: false, file: null });
-  
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const filteredFiles = useMemo(() => {
-    return mockFileTrackers.filter((file) => {
-      const matchesSearch =
-        file.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        file.fileNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        file.description.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const matchesStatus = statusFilter === 'all' || file.status === statusFilter;
-      const matchesCategory = categoryFilter === 'all' || file.category === categoryFilter;
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
-      return matchesSearch && matchesStatus && matchesCategory;
-    });
-  }, [searchQuery, statusFilter, categoryFilter]);
+  // API hooks
+  const { data: filesData, isLoading } = useFileTrackerList({
+    page,
+    page_size: pageSize,
+    search: debouncedSearch || undefined,
+    status: statusFilter !== 'all' ? statusFilter : undefined,
+    category: categoryFilter !== 'all' ? categoryFilter : undefined,
+  });
+  const { data: stats } = useFileTrackerStats();
+  const createFile = useCreateFileTracker();
+  const updateFile = useUpdateFileTracker();
+  const deleteFile = useDeleteFileTracker();
+  const closeFile = useCloseFileTracker();
+  const reopenFile = useReopenFileTracker();
+
+  const files = filesData?.results || [];
+  const totalCount = filesData?.count || 0;
 
   const openCreateDialog = () => {
     setFormData({ title: '', description: '', category: '' });
     setFileDialog({ open: true, mode: 'create', file: null });
   };
 
-  const openEditDialog = (file: typeof mockFileTrackers[0]) => {
+  const openEditDialog = (file: FileTracker) => {
     setFormData({
       title: file.title,
       description: file.description,
@@ -179,34 +145,48 @@ export default function FileTracking() {
 
   const handleSubmit = async () => {
     if (!formData.title || !formData.category) {
-      toast.error('Please fill in all required fields');
       return;
     }
 
-    setIsSubmitting(true);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success(fileDialog.mode === 'create' ? 'File tracker created' : 'File tracker updated');
-      closeFileDialog();
-    } catch (error) {
-      toast.error('Operation failed');
-    } finally {
-      setIsSubmitting(false);
+    if (fileDialog.mode === 'create') {
+      createFile.mutate({
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+      }, {
+        onSuccess: () => closeFileDialog(),
+      });
+    } else if (fileDialog.file) {
+      updateFile.mutate({
+        id: fileDialog.file.id,
+        data: {
+          title: formData.title,
+          description: formData.description,
+          category: formData.category,
+        },
+      }, {
+        onSuccess: () => closeFileDialog(),
+      });
     }
   };
 
-  const handleToggleStatus = async (file: typeof mockFileTrackers[0]) => {
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      toast.success(`File ${file.status === 'open' ? 'closed' : 'reopened'} successfully`);
-    } catch (error) {
-      toast.error('Operation failed');
+  const handleToggleStatus = (file: FileTracker) => {
+    if (file.status === 'open') {
+      closeFile.mutate(file.id);
+    } else {
+      reopenFile.mutate(file.id);
     }
+  };
+
+  const handleDelete = (id: string) => {
+    deleteFile.mutate(id);
   };
 
   const navigateToDocument = (type: string, id: string) => {
     navigate(`/${type}/${id}`);
   };
+
+  const isSubmitting = createFile.isPending || updateFile.isPending;
 
   return (
     <div className="space-y-6">
@@ -227,31 +207,25 @@ export default function FileTracking() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Files</CardDescription>
-            <CardTitle className="text-3xl">{mockFileTrackers.length}</CardTitle>
+            <CardTitle className="text-3xl">{stats?.total || totalCount}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Open Files</CardDescription>
-            <CardTitle className="text-3xl text-green-600">
-              {mockFileTrackers.filter((f) => f.status === 'open').length}
-            </CardTitle>
+            <CardTitle className="text-3xl text-green-600">{stats?.open || 0}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Closed Files</CardDescription>
-            <CardTitle className="text-3xl text-muted-foreground">
-              {mockFileTrackers.filter((f) => f.status === 'closed').length}
-            </CardTitle>
+            <CardTitle className="text-3xl text-muted-foreground">{stats?.closed || 0}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Linked Docs</CardDescription>
-            <CardTitle className="text-3xl text-blue-600">
-              {mockFileTrackers.reduce((sum, f) => sum + f.linkedDocuments.length, 0)}
-            </CardTitle>
+            <CardTitle className="text-3xl text-blue-600">{stats?.totalLinkedDocs || 0}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -301,110 +275,138 @@ export default function FileTracking() {
       {/* Files Table */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>File</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead className="hidden md:table-cell">Linked Docs</TableHead>
-                <TableHead className="hidden lg:table-cell">Created</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredFiles.length === 0 ? (
+          {isLoading ? (
+            <div className="p-6 space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <Skeleton className="h-12 w-12 rounded-lg" />
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-1/3" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    No files found matching your criteria
-                  </TableCell>
+                  <TableHead>File</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead className="hidden md:table-cell">Linked Docs</TableHead>
+                  <TableHead className="hidden lg:table-cell">Created</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ) : (
-                filteredFiles.map((file) => (
-                  <TableRow key={file.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className={cn(
-                          "p-2 rounded-lg",
-                          file.status === 'open' ? "bg-green-100" : "bg-gray-100"
-                        )}>
-                          {file.status === 'open' ? (
-                            <FolderOpen className="h-5 w-5 text-green-600" />
-                          ) : (
-                            <FolderClosed className="h-5 w-5 text-gray-600" />
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-medium">{file.fileNumber}</p>
-                          <p className="text-sm text-muted-foreground line-clamp-1">{file.title}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{file.category}</Badge>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <div className="flex items-center gap-1">
-                        <Link2 className="h-4 w-4 text-muted-foreground" />
-                        <span>{file.linkedDocuments.length}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Calendar className="h-4 w-4" />
-                        {format(new Date(file.createdAt), 'PP')}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={file.status === 'open' ? 'default' : 'secondary'}>
-                        {file.status === 'open' ? 'Open' : 'Closed'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => setDetailDialog({ open: true, file })}>
-                            <Eye className="mr-2 h-4 w-4" />
-                            View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openEditDialog(file)}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleToggleStatus(file)}>
-                            {file.status === 'open' ? (
-                              <>
-                                <FolderClosed className="mr-2 h-4 w-4" />
-                                Close File
-                              </>
-                            ) : (
-                              <>
-                                <FolderOpen className="mr-2 h-4 w-4" />
-                                Reopen File
-                              </>
-                            )}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+              </TableHeader>
+              <TableBody>
+                {files.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      No files found matching your criteria
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  files.map((file) => (
+                    <TableRow key={file.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "p-2 rounded-lg",
+                            file.status === 'open' ? "bg-green-100" : "bg-gray-100"
+                          )}>
+                            {file.status === 'open' ? (
+                              <FolderOpen className="h-5 w-5 text-green-600" />
+                            ) : (
+                              <FolderClosed className="h-5 w-5 text-gray-600" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-medium">{file.fileNumber}</p>
+                            <p className="text-sm text-muted-foreground line-clamp-1">{file.title}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{file.category}</Badge>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <div className="flex items-center gap-1">
+                          <Link2 className="h-4 w-4 text-muted-foreground" />
+                          <span>{file.dartaCount + file.chalaniCount}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Calendar className="h-4 w-4" />
+                          {format(new Date(file.createdAt), 'PP')}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={file.status === 'open' ? 'default' : 'secondary'}>
+                          {file.status === 'open' ? 'Open' : 'Closed'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => setDetailDialog({ open: true, file })}>
+                              <Eye className="mr-2 h-4 w-4" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditDialog(file)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleToggleStatus(file)}>
+                              {file.status === 'open' ? (
+                                <>
+                                  <FolderClosed className="mr-2 h-4 w-4" />
+                                  Close File
+                                </>
+                              ) : (
+                                <>
+                                  <FolderOpen className="mr-2 h-4 w-4" />
+                                  Reopen File
+                                </>
+                              )}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(file.id)}>
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
+        {totalCount > pageSize && (
+          <div className="border-t p-4">
+            <DataTablePagination
+              currentPage={page}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+            />
+          </div>
+        )}
       </Card>
 
       {/* Create/Edit Dialog */}
@@ -464,7 +466,12 @@ export default function FileTracking() {
               Cancel
             </Button>
             <Button onClick={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting ? 'Saving...' : fileDialog.mode === 'create' ? 'Create' : 'Save'}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : fileDialog.mode === 'create' ? 'Create' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -486,84 +493,78 @@ export default function FileTracking() {
           </DialogHeader>
 
           {detailDialog.file && (
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Category</p>
-                  <p className="font-medium">{detailDialog.file.category}</p>
+            <ScrollArea className="max-h-[60vh]">
+              <div className="space-y-6 py-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Category</p>
+                    <Badge variant="outline">{detailDialog.file.category}</Badge>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Status</p>
+                    <Badge variant={detailDialog.file.status === 'open' ? 'default' : 'secondary'}>
+                      {detailDialog.file.status === 'open' ? 'Open' : 'Closed'}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Created</p>
+                    <p className="font-medium">{format(new Date(detailDialog.file.createdAt), 'PPP')}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Created By</p>
+                    <p className="font-medium">{detailDialog.file.createdBy}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Status</p>
-                  <Badge variant={detailDialog.file.status === 'open' ? 'default' : 'secondary'}>
-                    {detailDialog.file.status}
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Created By</p>
-                  <p className="font-medium">{detailDialog.file.createdBy}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Created At</p>
-                  <p className="font-medium">{format(new Date(detailDialog.file.createdAt), 'PPP')}</p>
-                </div>
-              </div>
 
-              {detailDialog.file.description && (
+                {detailDialog.file.description && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Description</p>
+                    <p className="text-sm">{detailDialog.file.description}</p>
+                  </div>
+                )}
+
+                <Separator />
+
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Description</p>
-                  <p className="text-sm">{detailDialog.file.description}</p>
-                </div>
-              )}
-
-              <Separator />
-
-              <div>
-                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <Link2 className="h-4 w-4" />
-                  Linked Documents ({detailDialog.file.linkedDocuments.length})
-                </h4>
-                <ScrollArea className="h-[200px]">
-                  <div className="space-y-2">
-                    {detailDialog.file.linkedDocuments.map((doc) => (
-                      <div
-                        key={doc.id}
-                        className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer"
-                        onClick={() => navigateToDocument(doc.type, doc.id)}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "p-2 rounded-lg",
-                            doc.type === 'darta' ? "bg-blue-100" : "bg-purple-100"
-                          )}>
-                            <FileText className={cn(
-                              "h-4 w-4",
-                              doc.type === 'darta' ? "text-blue-600" : "text-purple-600"
-                            )} />
+                  <h4 className="font-medium mb-3 flex items-center gap-2">
+                    <Link2 className="h-4 w-4" />
+                    Linked Documents ({detailDialog.file.linkedDocuments?.length || 0})
+                  </h4>
+                  {detailDialog.file.linkedDocuments?.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No documents linked to this file</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {detailDialog.file.linkedDocuments?.map((doc) => (
+                        <div
+                          key={`${doc.type}-${doc.id}`}
+                          className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+                          onClick={() => navigateToDocument(doc.type, doc.id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "p-1.5 rounded",
+                              doc.type === 'darta' ? "bg-blue-100" : "bg-purple-100"
+                            )}>
+                              {doc.type === 'darta' ? (
+                                <FileText className="h-4 w-4 text-blue-600" />
+                              ) : (
+                                <Send className="h-4 w-4 text-purple-600" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-medium text-sm">{doc.number}</p>
+                              <p className="text-xs text-muted-foreground line-clamp-1">{doc.subject}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-medium text-sm">{doc.number}</p>
-                            <p className="text-xs text-muted-foreground line-clamp-1">{doc.subject}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">
-                            {doc.type === 'darta' ? 'Incoming' : 'Outgoing'}
-                          </Badge>
                           <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            </ScrollArea>
           )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDetailDialog({ open: false, file: null })}>
-              Close
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

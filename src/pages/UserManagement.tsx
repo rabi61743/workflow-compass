@@ -519,9 +519,8 @@ export default function UserManagement() {
           <div className="border-t p-4">
             <DataTablePagination
               currentPage={page}
-              totalPages={Math.ceil(totalUsers / pageSize)}
               pageSize={pageSize}
-              totalItems={totalUsers}
+              totalCount={totalUsers}
               onPageChange={setPage}
               onPageSizeChange={(size) => {
                 setPageSize(size);
