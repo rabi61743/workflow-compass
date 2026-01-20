@@ -62,13 +62,22 @@ export const authApi = {
   },
 
   async resetPasswordRequest(email: string): Promise<void> {
-    await apiClient.post('/auth/password-reset/', { email });
+    await apiClient.post('/auth/password/reset/', { email });
   },
 
   async resetPasswordConfirm(token: string, newPassword: string): Promise<void> {
-    await apiClient.post('/auth/password-reset/confirm/', {
+    await apiClient.post('/auth/password/reset/confirm/', {
       token,
       new_password: newPassword,
     });
+  },
+
+  async validateResetToken(token: string): Promise<boolean> {
+    try {
+      await apiClient.post('/auth/password/reset/validate/', { token });
+      return true;
+    } catch {
+      return false;
+    }
   },
 };
