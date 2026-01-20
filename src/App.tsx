@@ -2,7 +2,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 import ForgotPassword from "@/pages/ForgotPassword";
@@ -29,45 +28,43 @@ import NotFound from "@/pages/NotFound";
 const App = () => {
   return (
     <TooltipProvider>
-      <AuthProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            {/* Public routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            
-            {/* Protected routes with layout */}
-            <Route element={<AppLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/darta" element={<DartaList />} />
-              <Route path="/darta/new" element={<NewDarta />} />
-              <Route path="/darta/:id" element={<DartaDetail />} />
-              <Route path="/chalani" element={<ChalaniList />} />
-              <Route path="/chalani/new" element={<NewChalani />} />
-              <Route path="/chalani/:id" element={<ChalaniDetail />} />
-              <Route path="/organization" element={<Organization />} />
-              <Route path="/users" element={<UserManagement />} />
-              <Route path="/files" element={<FileTracking />} />
-              <Route path="/search" element={<Search />} />
-              <Route path="/templates" element={<Templates />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/audit" element={<AuditLogs />} />
-              <Route path="/notifications" element={<Notifications />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/profile" element={<Profile />} />
-            </Route>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
-            {/* Redirect root to dashboard */}
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            
-            {/* Catch-all */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
+          {/* Protected routes with layout */}
+          <Route element={<AppLayout />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/darta" element={<DartaList />} />
+            <Route path="/darta/new" element={<NewDarta />} />
+            <Route path="/darta/:id" element={<DartaDetail />} />
+            <Route path="/chalani" element={<ChalaniList />} />
+            <Route path="/chalani/new" element={<NewChalani />} />
+            <Route path="/chalani/:id" element={<ChalaniDetail />} />
+            <Route path="/organization" element={<Organization />} />
+            <Route path="/users" element={<UserManagement />} />
+            <Route path="/files" element={<FileTracking />} />
+            <Route path="/search" element={<Search />} />
+            <Route path="/templates" element={<Templates />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/audit" element={<AuditLogs />} />
+            <Route path="/notifications" element={<Notifications />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/profile" element={<Profile />} />
+          </Route>
+
+          {/* Redirect root to dashboard */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+          {/* Catch-all */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
     </TooltipProvider>
   );
 };
