@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react';
 import {
   Search,
   Plus,
-  Filter,
   MoreHorizontal,
   Edit,
   Trash2,
@@ -10,12 +9,12 @@ import {
   UserCheck,
   UserX,
   Shield,
-  Mail,
   Building,
-  ChevronDown,
 } from 'lucide-react';
-import { mockUsers, mockOffices } from '@/lib/mock-data';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserList, useCreateUser, useUpdateUser, useDeleteUser, useActivateUser, useDeactivateUser, useResetUserPassword } from '@/hooks/use-users';
+import { useOfficeList } from '@/hooks/use-organization';
+import { useDebounce } from '@/hooks/use-debounce';
 import { User, UserRole, Permission } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,7 +62,8 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { cn } from '@/lib/utils';
 
 const roleOptions: { value: UserRole; label: string }[] = [
@@ -113,6 +113,10 @@ export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  
+  const debouncedSearch = useDebounce(searchQuery, 300);
   
   const [userDialog, setUserDialog] = useState<{
     open: boolean;
@@ -121,30 +125,33 @@ export default function UserManagement() {
   }>({ open: false, mode: 'create', user: null });
   
   const [formData, setFormData] = useState<UserFormData>(defaultFormData);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; user: User | null }>({
     open: false,
     user: null,
   });
 
+  // API hooks
+  const { data: usersData, isLoading } = useUserList({
+    page,
+    page_size: pageSize,
+    search: debouncedSearch || undefined,
+    role: roleFilter !== 'all' ? roleFilter as UserRole : undefined,
+    is_active: statusFilter === 'all' ? undefined : statusFilter === 'active',
+  });
+  
+  const { data: officesData } = useOfficeList({});
+  const createUser = useCreateUser();
+  const updateUser = useUpdateUser();
+  const deleteUserMutation = useDeleteUser();
+  const activateUser = useActivateUser();
+  const deactivateUser = useDeactivateUser();
+  const resetPassword = useResetUserPassword();
+
   const canManageUsers = hasRole(['administrator']) || hasPermission('users', 'create');
-
-  const filteredUsers = useMemo(() => {
-    return mockUsers.filter((user) => {
-      const matchesSearch =
-        user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.designation.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-      const matchesStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'active' && user.isActive) ||
-        (statusFilter === 'inactive' && !user.isActive);
-
-      return matchesSearch && matchesRole && matchesStatus;
-    });
-  }, [searchQuery, roleFilter, statusFilter]);
+  
+  const users = usersData?.results || [];
+  const totalUsers = usersData?.count || 0;
+  const offices = officesData?.results || [];
 
   const getRoleBadge = (role: UserRole) => {
     const variants: Record<UserRole, string> = {
@@ -202,7 +209,6 @@ export default function UserManagement() {
       
       if (existingPermission) {
         if (checked) {
-          // Add action
           return {
             ...prev,
             permissions: prev.permissions.map((p) =>
@@ -212,7 +218,6 @@ export default function UserManagement() {
             ),
           };
         } else {
-          // Remove action
           const newActions = existingPermission.actions.filter((a) => a !== action);
           if (newActions.length === 0) {
             return {
@@ -228,7 +233,6 @@ export default function UserManagement() {
           };
         }
       } else if (checked) {
-        // Add new permission
         return {
           ...prev,
           permissions: [...prev.permissions, { module, actions: [action as any] }],
@@ -245,68 +249,69 @@ export default function UserManagement() {
 
   const handleSubmit = async () => {
     if (!formData.name || !formData.email || !formData.designation || !formData.officeId) {
-      toast.error('Please fill in all required fields');
       return;
     }
 
     if (userDialog.mode === 'create') {
       if (!formData.password || formData.password.length < 8) {
-        toast.error('Password must be at least 8 characters');
         return;
       }
       if (formData.password !== formData.confirmPassword) {
-        toast.error('Passwords do not match');
         return;
       }
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
       
-      if (userDialog.mode === 'create') {
-        toast.success('User created successfully');
-      } else {
-        toast.success('User updated successfully');
-      }
-      closeUserDialog();
-    } catch (error) {
-      toast.error('Operation failed. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+      createUser.mutate({
+        email: formData.email,
+        name: formData.name,
+        designation: formData.designation,
+        role: formData.role,
+        office_id: formData.officeId,
+        password: formData.password,
+        permissions: formData.permissions,
+      }, {
+        onSuccess: () => closeUserDialog(),
+      });
+    } else if (userDialog.user) {
+      updateUser.mutate({
+        id: userDialog.user.id,
+        data: {
+          email: formData.email,
+          name: formData.name,
+          designation: formData.designation,
+          role: formData.role,
+          office_id: formData.officeId,
+          permissions: formData.permissions,
+        },
+      }, {
+        onSuccess: () => closeUserDialog(),
+      });
     }
   };
 
-  const handleToggleStatus = async (user: User) => {
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      toast.success(`User ${user.isActive ? 'deactivated' : 'activated'} successfully`);
-    } catch (error) {
-      toast.error('Operation failed');
+  const handleToggleStatus = (user: User) => {
+    if (user.isActive) {
+      deactivateUser.mutate(user.id);
+    } else {
+      activateUser.mutate(user.id);
     }
   };
 
-  const handleResetPassword = async (user: User) => {
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      toast.success(`Password reset link sent to ${user.email}`);
-    } catch (error) {
-      toast.error('Failed to send reset link');
-    }
+  const handleResetPassword = (user: User) => {
+    resetPassword.mutate(user.id);
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!deleteDialog.user) return;
-
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      toast.success('User deleted successfully');
-      setDeleteDialog({ open: false, user: null });
-    } catch (error) {
-      toast.error('Failed to delete user');
-    }
+    deleteUserMutation.mutate(deleteDialog.user.id, {
+      onSuccess: () => setDeleteDialog({ open: false, user: null }),
+    });
   };
+
+  const isSubmitting = createUser.isPending || updateUser.isPending;
+
+  // Calculate stats from the data
+  const activeCount = users.filter(u => u.isActive).length;
+  const adminCount = users.filter(u => u.role === 'administrator').length;
 
   return (
     <div className="space-y-6">
@@ -329,31 +334,25 @@ export default function UserManagement() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Users</CardDescription>
-            <CardTitle className="text-3xl">{mockUsers.length}</CardTitle>
+            <CardTitle className="text-3xl">{totalUsers}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Active Users</CardDescription>
-            <CardTitle className="text-3xl text-green-600">
-              {mockUsers.filter((u) => u.isActive).length}
-            </CardTitle>
+            <CardTitle className="text-3xl text-green-600">{activeCount}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Administrators</CardDescription>
-            <CardTitle className="text-3xl text-purple-600">
-              {mockUsers.filter((u) => u.role === 'administrator').length}
-            </CardTitle>
+            <CardTitle className="text-3xl text-purple-600">{adminCount}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Departments</CardDescription>
-            <CardTitle className="text-3xl">
-              {mockOffices.filter((o) => o.type === 'department').length}
-            </CardTitle>
+            <CardDescription>Offices</CardDescription>
+            <CardTitle className="text-3xl">{offices.length}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -388,7 +387,6 @@ export default function UserManagement() {
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[140px]">
-                  <Filter className="mr-2 h-4 w-4" />
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -405,125 +403,154 @@ export default function UserManagement() {
       {/* Users Table */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead className="hidden md:table-cell">Office</TableHead>
-                <TableHead className="hidden lg:table-cell">Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.length === 0 ? (
+          {isLoading ? (
+            <div className="p-6 space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-1/3" />
+                    <Skeleton className="h-3 w-1/4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                    No users found matching your criteria
-                  </TableCell>
+                  <TableHead>User</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead className="hidden md:table-cell">Office</TableHead>
+                  <TableHead className="hidden lg:table-cell">Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ) : (
-                filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                            {user.name.split(' ').map((n) => n[0]).join('')}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium">{user.name}</p>
-                          <p className="text-sm text-muted-foreground">{user.email}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        {getRoleBadge(user.role)}
-                        <p className="text-xs text-muted-foreground">{user.designation}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <div className="flex items-center gap-2">
-                        <Building className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{user.officeName}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <Badge variant={user.isActive ? 'default' : 'secondary'}>
-                        {user.isActive ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => openEditDialog(user)}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Edit User
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleResetPassword(user)}>
-                            <KeyRound className="mr-2 h-4 w-4" />
-                            Reset Password
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleToggleStatus(user)}>
-                            {user.isActive ? (
-                              <>
-                                <UserX className="mr-2 h-4 w-4" />
-                                Deactivate
-                              </>
-                            ) : (
-                              <>
-                                <UserCheck className="mr-2 h-4 w-4" />
-                                Activate
-                              </>
-                            )}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => setDeleteDialog({ open: true, user })}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete User
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+              </TableHeader>
+              <TableBody>
+                {users.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      No users found matching your criteria
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  users.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                              {user.name.split(' ').map((n) => n[0]).join('')}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{user.name}</p>
+                            <p className="text-sm text-muted-foreground">{user.email}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {getRoleBadge(user.role)}
+                          <p className="text-xs text-muted-foreground">{user.designation}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <div className="flex items-center gap-2">
+                          <Building className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm">{user.officeName}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        <Badge variant={user.isActive ? 'default' : 'secondary'}>
+                          {user.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => openEditDialog(user)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit User
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleResetPassword(user)}>
+                              <KeyRound className="mr-2 h-4 w-4" />
+                              Reset Password
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleToggleStatus(user)}>
+                              {user.isActive ? (
+                                <>
+                                  <UserX className="mr-2 h-4 w-4" />
+                                  Deactivate
+                                </>
+                              ) : (
+                                <>
+                                  <UserCheck className="mr-2 h-4 w-4" />
+                                  Activate
+                                </>
+                              )}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => setDeleteDialog({ open: true, user })}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete User
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
+        {totalUsers > pageSize && (
+          <div className="border-t p-4">
+            <DataTablePagination
+              currentPage={page}
+              totalPages={Math.ceil(totalUsers / pageSize)}
+              pageSize={pageSize}
+              totalItems={totalUsers}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+            />
+          </div>
+        )}
       </Card>
 
-      {/* Create/Edit User Dialog */}
+      {/* Create/Edit Dialog */}
       <Dialog open={userDialog.open} onOpenChange={(open) => !open && closeUserDialog()}>
         <DialogContent className="sm:max-w-[600px] max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>
-              {userDialog.mode === 'create' ? 'Create New User' : 'Edit User'}
+              {userDialog.mode === 'create' ? 'Create User' : 'Edit User'}
             </DialogTitle>
             <DialogDescription>
               {userDialog.mode === 'create'
                 ? 'Add a new user to the system'
-                : 'Update user information and permissions'}
+                : 'Update user details and permissions'}
             </DialogDescription>
           </DialogHeader>
 
           <ScrollArea className="max-h-[60vh] pr-4">
             <div className="space-y-6 py-4">
-              {/* Basic Information */}
+              {/* Basic Info */}
               <div className="space-y-4">
-                <h4 className="text-sm font-medium">Basic Information</h4>
+                <h4 className="font-medium">Basic Information</h4>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="name">Full Name *</Label>
@@ -535,11 +562,11 @@ export default function UserManagement() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email Address *</Label>
+                    <Label htmlFor="email">Email *</Label>
                     <Input
                       id="email"
                       type="email"
-                      placeholder="user@example.com"
+                      placeholder="Enter email"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     />
@@ -548,12 +575,30 @@ export default function UserManagement() {
                     <Label htmlFor="designation">Designation *</Label>
                     <Input
                       id="designation"
-                      placeholder="e.g., Senior Officer"
+                      placeholder="Enter designation"
                       value={formData.designation}
                       onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label htmlFor="role">Role *</Label>
+                    <Select
+                      value={formData.role}
+                      onValueChange={(value: UserRole) => setFormData({ ...formData, role: value })}
+                    >
+                      <SelectTrigger id="role">
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {roleOptions.map((role) => (
+                          <SelectItem key={role.value} value={role.value}>
+                            {role.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
                     <Label htmlFor="office">Office *</Label>
                     <Select
                       value={formData.officeId}
@@ -563,7 +608,7 @@ export default function UserManagement() {
                         <SelectValue placeholder="Select office" />
                       </SelectTrigger>
                       <SelectContent>
-                        {mockOffices.map((office) => (
+                        {offices.map((office) => (
                           <SelectItem key={office.id} value={office.id}>
                             {office.name}
                           </SelectItem>
@@ -574,45 +619,19 @@ export default function UserManagement() {
                 </div>
               </div>
 
-              <Separator />
-
-              {/* Role Selection */}
-              <div className="space-y-4">
-                <h4 className="text-sm font-medium">Role Assignment</h4>
-                <div className="space-y-2">
-                  <Label htmlFor="role">User Role *</Label>
-                  <Select
-                    value={formData.role}
-                    onValueChange={(value: UserRole) => setFormData({ ...formData, role: value })}
-                  >
-                    <SelectTrigger id="role">
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {roleOptions.map((role) => (
-                        <SelectItem key={role.value} value={role.value}>
-                          {role.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <Separator />
-
               {/* Password (only for create) */}
               {userDialog.mode === 'create' && (
                 <>
+                  <Separator />
                   <div className="space-y-4">
-                    <h4 className="text-sm font-medium">Password</h4>
+                    <h4 className="font-medium">Password</h4>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label htmlFor="password">Password *</Label>
                         <Input
                           id="password"
                           type="password"
-                          placeholder="Min 8 characters"
+                          placeholder="Enter password"
                           value={formData.password}
                           onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                         />
@@ -624,37 +643,35 @@ export default function UserManagement() {
                           type="password"
                           placeholder="Confirm password"
                           value={formData.confirmPassword}
-                          onChange={(e) =>
-                            setFormData({ ...formData, confirmPassword: e.target.value })
-                          }
+                          onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                         />
                       </div>
                     </div>
                   </div>
-                  <Separator />
                 </>
               )}
 
               {/* Permissions */}
+              <Separator />
               <div className="space-y-4">
-                <h4 className="text-sm font-medium">Module Permissions</h4>
+                <h4 className="font-medium">Module Permissions</h4>
                 <div className="space-y-4">
-                  {modulePermissions.map((module) => (
-                    <div key={module.module} className="space-y-2">
-                      <p className="text-sm font-medium">{module.label}</p>
+                  {modulePermissions.map((mod) => (
+                    <div key={mod.module} className="space-y-2">
+                      <Label className="text-sm font-medium">{mod.label}</Label>
                       <div className="flex flex-wrap gap-4">
                         {actionOptions.map((action) => (
                           <div key={action} className="flex items-center space-x-2">
                             <Checkbox
-                              id={`${module.module}-${action}`}
-                              checked={hasPermissionAction(module.module, action)}
+                              id={`${mod.module}-${action}`}
+                              checked={hasPermissionAction(mod.module, action)}
                               onCheckedChange={(checked) =>
-                                handlePermissionChange(module.module, action, checked as boolean)
+                                handlePermissionChange(mod.module, action, checked as boolean)
                               }
                             />
                             <Label
-                              htmlFor={`${module.module}-${action}`}
-                              className="text-sm font-normal capitalize"
+                              htmlFor={`${mod.module}-${action}`}
+                              className="text-sm capitalize cursor-pointer"
                             >
                               {action}
                             </Label>
@@ -673,11 +690,7 @@ export default function UserManagement() {
               Cancel
             </Button>
             <Button onClick={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting
-                ? 'Saving...'
-                : userDialog.mode === 'create'
-                ? 'Create User'
-                : 'Save Changes'}
+              {isSubmitting ? 'Saving...' : userDialog.mode === 'create' ? 'Create User' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -696,8 +709,8 @@ export default function UserManagement() {
             <Button variant="outline" onClick={() => setDeleteDialog({ open: false, user: null })}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDelete}>
-              Delete
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteUserMutation.isPending}>
+              {deleteUserMutation.isPending ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>

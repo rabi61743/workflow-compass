@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { mockOffices } from '@/lib/mock-data';
+import { useOfficeList, useOfficeHierarchy, useCreateOffice, useUpdateOffice, useDeleteOffice } from '@/hooks/use-organization';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -9,10 +9,61 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Plus, Search, ChevronRight, Building2, MapPin, Users } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Plus, Search, ChevronRight, Building2, MapPin, Edit } from 'lucide-react';
 import { Office } from '@/lib/types';
+import { toast } from 'sonner';
 
-function OfficeTreeNode({ office, allOffices, level = 0 }: { office: Office; allOffices: Office[]; level?: number }) {
+interface OfficeFormData {
+  name: string;
+  code: string;
+  type: string;
+  location: string;
+  parentId: string;
+}
+
+const defaultFormData: OfficeFormData = {
+  name: '',
+  code: '',
+  type: 'department',
+  location: '',
+  parentId: '',
+};
+
+const officeTypes = [
+  { value: 'head_office', label: 'Head Office' },
+  { value: 'regional', label: 'Regional Office' },
+  { value: 'branch', label: 'Branch Office' },
+  { value: 'department', label: 'Department' },
+];
+
+function OfficeTreeNode({ 
+  office, 
+  allOffices, 
+  level = 0,
+  onEdit,
+}: { 
+  office: Office; 
+  allOffices: Office[]; 
+  level?: number;
+  onEdit: (office: Office) => void;
+}) {
   const [isOpen, setIsOpen] = useState(level < 2);
   const children = allOffices.filter(o => o.parentId === office.id);
   const hasChildren = children.length > 0;
@@ -67,7 +118,8 @@ function OfficeTreeNode({ office, allOffices, level = 0 }: { office: Office; all
             </div>
           </div>
 
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" onClick={() => onEdit(office)}>
+            <Edit className="h-4 w-4 mr-1" />
             Edit
           </Button>
         </div>
@@ -81,6 +133,7 @@ function OfficeTreeNode({ office, allOffices, level = 0 }: { office: Office; all
                   office={child}
                   allOffices={allOffices}
                   level={level + 1}
+                  onEdit={onEdit}
                 />
               ))}
             </div>
@@ -93,11 +146,23 @@ function OfficeTreeNode({ office, allOffices, level = 0 }: { office: Office; all
 
 export default function Organization() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [officeDialog, setOfficeDialog] = useState<{
+    open: boolean;
+    mode: 'create' | 'edit';
+    office: Office | null;
+  }>({ open: false, mode: 'create', office: null });
+  const [formData, setFormData] = useState<OfficeFormData>(defaultFormData);
 
-  const rootOffices = mockOffices.filter(o => !o.parentId);
+  // API hooks
+  const { data: officesData, isLoading } = useOfficeList({});
+  const createOffice = useCreateOffice();
+  const updateOffice = useUpdateOffice();
+
+  const offices = officesData?.results || [];
+  const rootOffices = offices.filter(o => !o.parentId);
 
   const filteredOffices = searchQuery
-    ? mockOffices.filter(
+    ? offices.filter(
         o =>
           o.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           o.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -106,12 +171,67 @@ export default function Organization() {
     : rootOffices;
 
   const stats = {
-    total: mockOffices.length,
-    headOffice: mockOffices.filter(o => o.type === 'head_office').length,
-    regional: mockOffices.filter(o => o.type === 'regional').length,
-    branch: mockOffices.filter(o => o.type === 'branch').length,
-    department: mockOffices.filter(o => o.type === 'department').length,
+    total: offices.length,
+    headOffice: offices.filter(o => o.type === 'head_office').length,
+    regional: offices.filter(o => o.type === 'regional').length,
+    branch: offices.filter(o => o.type === 'branch').length,
+    department: offices.filter(o => o.type === 'department').length,
   };
+
+  const openCreateDialog = () => {
+    setFormData(defaultFormData);
+    setOfficeDialog({ open: true, mode: 'create', office: null });
+  };
+
+  const openEditDialog = (office: Office) => {
+    setFormData({
+      name: office.name,
+      code: office.code,
+      type: office.type,
+      location: office.location,
+      parentId: office.parentId || '',
+    });
+    setOfficeDialog({ open: true, mode: 'edit', office });
+  };
+
+  const closeDialog = () => {
+    setOfficeDialog({ open: false, mode: 'create', office: null });
+    setFormData(defaultFormData);
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.name || !formData.code || !formData.type) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    if (officeDialog.mode === 'create') {
+      createOffice.mutate({
+        name: formData.name,
+        code: formData.code,
+        type: formData.type as any,
+        location: formData.location,
+        parent_id: formData.parentId || undefined,
+      }, {
+        onSuccess: () => closeDialog(),
+      });
+    } else if (officeDialog.office) {
+      updateOffice.mutate({
+        id: officeDialog.office.id,
+        data: {
+          name: formData.name,
+          code: formData.code,
+          type: formData.type as any,
+          location: formData.location,
+          parent_id: formData.parentId || undefined,
+        },
+      }, {
+        onSuccess: () => closeDialog(),
+      });
+    }
+  };
+
+  const isSubmitting = createOffice.isPending || updateOffice.isPending;
 
   return (
     <div className="space-y-6">
@@ -122,7 +242,7 @@ export default function Organization() {
             Manage offices, departments, and organizational hierarchy
           </p>
         </div>
-        <Button>
+        <Button onClick={openCreateDialog}>
           <Plus className="mr-2 h-4 w-4" />
           Add Office
         </Button>
@@ -183,7 +303,7 @@ export default function Organization() {
         </Card>
       </div>
 
-      {/* Search */}
+      {/* Search & Tree */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Office Directory</CardTitle>
@@ -204,7 +324,19 @@ export default function Organization() {
 
           {/* Tree View */}
           <div className="space-y-1">
-            {searchQuery ? (
+            {isLoading ? (
+              <div className="space-y-3">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3">
+                    <Skeleton className="h-8 w-8 rounded-lg" />
+                    <div className="space-y-2 flex-1">
+                      <Skeleton className="h-4 w-1/3" />
+                      <Skeleton className="h-3 w-1/4" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : searchQuery ? (
               filteredOffices.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   No offices found matching "{searchQuery}"
@@ -214,8 +346,9 @@ export default function Organization() {
                   <OfficeTreeNode
                     key={office.id}
                     office={office}
-                    allOffices={mockOffices}
+                    allOffices={offices}
                     level={0}
+                    onEdit={openEditDialog}
                   />
                 ))
               )
@@ -224,14 +357,113 @@ export default function Organization() {
                 <OfficeTreeNode
                   key={office.id}
                   office={office}
-                  allOffices={mockOffices}
+                  allOffices={offices}
                   level={0}
+                  onEdit={openEditDialog}
                 />
               ))
             )}
           </div>
         </CardContent>
       </Card>
+
+      {/* Create/Edit Dialog */}
+      <Dialog open={officeDialog.open} onOpenChange={(open) => !open && closeDialog()}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>
+              {officeDialog.mode === 'create' ? 'Add Office' : 'Edit Office'}
+            </DialogTitle>
+            <DialogDescription>
+              {officeDialog.mode === 'create'
+                ? 'Add a new office to the organization'
+                : 'Update office details'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="name">Office Name *</Label>
+                <Input
+                  id="name"
+                  placeholder="Enter office name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="code">Office Code *</Label>
+                <Input
+                  id="code"
+                  placeholder="e.g., HO-001"
+                  value={formData.code}
+                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="type">Office Type *</Label>
+                <Select
+                  value={formData.type}
+                  onValueChange={(value) => setFormData({ ...formData, type: value })}
+                >
+                  <SelectTrigger id="type">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {officeTypes.map((type) => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="location">Location</Label>
+                <Input
+                  id="location"
+                  placeholder="Enter location"
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="parent">Parent Office</Label>
+              <Select
+                value={formData.parentId}
+                onValueChange={(value) => setFormData({ ...formData, parentId: value })}
+              >
+                <SelectTrigger id="parent">
+                  <SelectValue placeholder="Select parent office (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None (Root Office)</SelectItem>
+                  {offices
+                    .filter(o => o.id !== officeDialog.office?.id)
+                    .map((office) => (
+                      <SelectItem key={office.id} value={office.id}>
+                        {office.name} ({office.code})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : officeDialog.mode === 'create' ? 'Create' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
