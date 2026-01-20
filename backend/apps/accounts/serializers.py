@@ -134,3 +134,14 @@ class LoginSerializer(serializers.Serializer):
     """Serializer for login request."""
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """Serializer for password reset request."""
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Serializer for password reset confirmation."""
+    token = serializers.CharField()
+    new_password = serializers.CharField(min_length=8)

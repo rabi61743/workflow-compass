@@ -12,11 +12,12 @@ from django.contrib.auth import get_user_model, authenticate
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 
-from .models import UserRole, Permission
+from .models import UserRole, Permission, PasswordResetToken
 from .serializers import (
     UserListSerializer, UserDetailSerializer, UserCreateSerializer,
     UserUpdateSerializer, UserRoleSerializer, PermissionSerializer,
-    ChangePasswordSerializer, CurrentUserSerializer, LoginSerializer
+    ChangePasswordSerializer, CurrentUserSerializer, LoginSerializer,
+    PasswordResetRequestSerializer, PasswordResetConfirmSerializer
 )
 from .permissions import IsAdministrator, IsOwnerOrAdmin
 
@@ -143,28 +144,145 @@ class CurrentUserView(APIView):
 
 
 class PasswordResetRequestView(APIView):
-    """Request password reset email."""
+    """
+    Request password reset email.
+    
+    POST /api/auth/password-reset/request/
+    """
     permission_classes = [permissions.AllowAny]
     
     def post(self, request):
-        email = request.data.get('email')
-        if not email:
-            return Response(
-                {'error': 'Email is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         
-        # Check if user exists
+        email = serializer.validated_data['email']
+        
         try:
             user = User.objects.get(email=email, is_active=True)
-            # TODO: Send password reset email
-            # For now, just acknowledge the request
+            
+            # Create reset token
+            reset_token = PasswordResetToken.create_for_user(user)
+            
+            # Send email asynchronously
+            from apps.notifications.tasks import send_email_notification
+            
+            reset_url = f"{request.build_absolute_uri('/').rstrip('/')}/#/reset-password?token={reset_token.token}"
+            
+            send_email_notification.delay(
+                user_id=str(user.id),
+                subject='Password Reset Request - WMS',
+                body=f"""
+Dear {user.name},
+
+You have requested to reset your password for the Workflow Management System.
+
+Click the link below to reset your password:
+{reset_url}
+
+This link will expire in 24 hours.
+
+If you did not request this password reset, please ignore this email.
+
+Best regards,
+Workflow Management System
+""",
+                html_body=f"""
+<h2>Password Reset Request</h2>
+<p>Dear {user.name},</p>
+<p>You have requested to reset your password for the Workflow Management System.</p>
+<p><a href="{reset_url}" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a></p>
+<p>This link will expire in 24 hours.</p>
+<p>If you did not request this password reset, please ignore this email.</p>
+<br>
+<p>Best regards,<br>Workflow Management System</p>
+"""
+            )
+            
         except User.DoesNotExist:
             pass  # Don't reveal if email exists
         
         return Response({
             'message': 'If an account with that email exists, a password reset link has been sent.'
         })
+
+
+class PasswordResetConfirmView(APIView):
+    """
+    Confirm password reset with token.
+    
+    POST /api/auth/password-reset/confirm/
+    """
+    permission_classes = [permissions.AllowAny]
+    
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        token = serializer.validated_data['token']
+        new_password = serializer.validated_data['new_password']
+        
+        try:
+            reset_token = PasswordResetToken.objects.get(token=token)
+            
+            if not reset_token.is_valid():
+                return Response(
+                    {'error': 'This password reset link has expired or already been used.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update password
+            user = reset_token.user
+            user.set_password(new_password)
+            user.save()
+            
+            # Mark token as used
+            reset_token.use()
+            
+            return Response({'message': 'Password has been reset successfully.'})
+            
+        except PasswordResetToken.DoesNotExist:
+            return Response(
+                {'error': 'Invalid password reset token.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class PasswordResetValidateView(APIView):
+    """
+    Validate password reset token.
+    
+    GET /api/auth/password-reset/validate/?token=xxx
+    """
+    permission_classes = [permissions.AllowAny]
+    
+    def get(self, request):
+        token = request.query_params.get('token')
+        
+        if not token:
+            return Response(
+                {'valid': False, 'error': 'Token is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            reset_token = PasswordResetToken.objects.get(token=token)
+            
+            if reset_token.is_valid():
+                return Response({
+                    'valid': True,
+                    'email': reset_token.user.email
+                })
+            else:
+                return Response({
+                    'valid': False,
+                    'error': 'Token has expired or already been used'
+                })
+                
+        except PasswordResetToken.DoesNotExist:
+            return Response({
+                'valid': False,
+                'error': 'Invalid token'
+            })
 
 
 # ============ User Management ViewSet ============

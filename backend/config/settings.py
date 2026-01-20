@@ -166,6 +166,33 @@ CORS_ALLOW_CREDENTIALS = True
 # Celery Configuration (for async tasks like email notifications)
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+
+# Celery Beat Schedule
+CELERY_BEAT_SCHEDULE = {
+    'check-sla-breaches': {
+        'task': 'apps.workflow.tasks.check_sla_breaches',
+        'schedule': 3600.0,  # Every hour
+    },
+    'check-sla-warnings': {
+        'task': 'apps.workflow.tasks.check_sla_warnings',
+        'schedule': 1800.0,  # Every 30 minutes
+    },
+    'send-daily-summary': {
+        'task': 'apps.workflow.tasks.send_daily_summary',
+        'schedule': {
+            'hour': 8,
+            'minute': 0,
+        },
+    },
+    'cleanup-old-notifications': {
+        'task': 'apps.notifications.tasks.cleanup_old_notifications',
+        'schedule': 604800.0,  # Weekly (7 days)
+    },
+}
 
 # Fiscal Year Settings (Nepal fiscal year starts mid-July)
 FISCAL_YEAR_START_MONTH = 4  # Shrawan (mid-July)
@@ -175,3 +202,6 @@ FISCAL_YEAR_START_DAY = 1
 DEFAULT_SLA_HOURS = 48
 URGENT_SLA_HOURS = 24
 CONFIDENTIAL_SLA_HOURS = 24
+
+# Password Reset Token Expiry (in hours)
+PASSWORD_RESET_TIMEOUT = 24
