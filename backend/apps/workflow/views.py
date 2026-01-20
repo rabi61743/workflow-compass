@@ -19,7 +19,8 @@ from .models import WorkflowStep, FileTracker, Attachment, AuditLog
 from .serializers import (
     WorkflowStepSerializer, WorkflowStepCreateSerializer,
     AttachmentSerializer, AttachmentCreateSerializer,
-    FileTrackerListSerializer, FileTrackerDetailSerializer, FileTrackerCreateSerializer,
+    FileTrackerListSerializer, FileTrackerDetailSerializer, 
+    FileTrackerCreateSerializer, FileTrackerUpdateSerializer,
     AuditLogSerializer
 )
 from apps.accounts.permissions import IsAdministrator, IsAuditor, ReadOnlyForAuditor
@@ -620,6 +621,48 @@ class FileTrackerViewSet(viewsets.ModelViewSet):
             Q(created_by=user)
         ).distinct()
     
+    @action(detail=False, methods=['get'])
+    def categories(self, request):
+        """Get list of file categories."""
+        categories = [
+            'General',
+            'Administrative',
+            'Financial',
+            'Legal',
+            'Personnel',
+            'Projects',
+            'Correspondence',
+            'Reports',
+            'Other'
+        ]
+        return Response(categories)
+    
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Get file tracker statistics."""
+        user = request.user
+        qs = self.get_queryset()
+        
+        total = qs.count()
+        open_files = qs.filter(is_active=True).count()
+        closed = qs.filter(is_active=False).count()
+        
+        # Count linked documents
+        from apps.darta.models import DartaLetter
+        from apps.chalani.models import ChalaniLetter
+        
+        total_linked_docs = (
+            DartaLetter.objects.filter(file_id__isnull=False).count() +
+            ChalaniLetter.objects.filter(file_id__isnull=False).count()
+        )
+        
+        return Response({
+            'total': total,
+            'open': open_files,
+            'closed': closed,
+            'total_linked_docs': total_linked_docs
+        })
+    
     @action(detail=True, methods=['post'])
     def close(self, request, pk=None):
         """Close a file tracker."""
@@ -630,8 +673,75 @@ class FileTrackerViewSet(viewsets.ModelViewSet):
         return Response(FileTrackerDetailSerializer(file_tracker).data)
     
     @action(detail=True, methods=['post'])
+    def reopen(self, request, pk=None):
+        """Reopen a closed file tracker."""
+        file_tracker = self.get_object()
+        file_tracker.is_active = True
+        file_tracker.closed_at = None
+        file_tracker.save()
+        return Response(FileTrackerDetailSerializer(file_tracker).data)
+    
+    @action(detail=True, methods=['post'])
+    def link(self, request, pk=None):
+        """Link a document (Darta or Chalani) to this file."""
+        from apps.darta.models import DartaLetter
+        from apps.chalani.models import ChalaniLetter
+        
+        file_tracker = self.get_object()
+        document_type = request.data.get('document_type')
+        document_id = request.data.get('document_id')
+        
+        if document_type == 'darta':
+            try:
+                document = DartaLetter.objects.get(id=document_id)
+                document.file_id = file_tracker
+                document.save()
+                return Response(FileTrackerDetailSerializer(file_tracker).data)
+            except DartaLetter.DoesNotExist:
+                return Response({'error': 'Darta not found'}, status=status.HTTP_404_NOT_FOUND)
+        elif document_type == 'chalani':
+            try:
+                document = ChalaniLetter.objects.get(id=document_id)
+                document.file_id = file_tracker
+                document.save()
+                return Response(FileTrackerDetailSerializer(file_tracker).data)
+            except ChalaniLetter.DoesNotExist:
+                return Response({'error': 'Chalani not found'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            return Response({'error': 'Invalid document type'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'])
+    def unlink(self, request, pk=None):
+        """Unlink a document from this file."""
+        from apps.darta.models import DartaLetter
+        from apps.chalani.models import ChalaniLetter
+        
+        file_tracker = self.get_object()
+        document_type = request.data.get('document_type')
+        document_id = request.data.get('document_id')
+        
+        if document_type == 'darta':
+            try:
+                document = DartaLetter.objects.get(id=document_id, file_id=file_tracker)
+                document.file_id = None
+                document.save()
+                return Response(FileTrackerDetailSerializer(file_tracker).data)
+            except DartaLetter.DoesNotExist:
+                return Response({'error': 'Darta not found or not linked'}, status=status.HTTP_404_NOT_FOUND)
+        elif document_type == 'chalani':
+            try:
+                document = ChalaniLetter.objects.get(id=document_id, file_id=file_tracker)
+                document.file_id = None
+                document.save()
+                return Response(FileTrackerDetailSerializer(file_tracker).data)
+            except ChalaniLetter.DoesNotExist:
+                return Response({'error': 'Chalani not found or not linked'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            return Response({'error': 'Invalid document type'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'])
     def link_darta(self, request, pk=None):
-        """Link a Darta letter to this file."""
+        """Link a Darta letter to this file (legacy endpoint)."""
         from apps.darta.models import DartaLetter
         
         file_tracker = self.get_object()
@@ -650,7 +760,7 @@ class FileTrackerViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def link_chalani(self, request, pk=None):
-        """Link a Chalani letter to this file."""
+        """Link a Chalani letter to this file (legacy endpoint)."""
         from apps.chalani.models import ChalaniLetter
         
         file_tracker = self.get_object()
@@ -682,3 +792,78 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_permissions(self):
         return [permissions.IsAuthenticated(), IsAdministrator() | IsAuditor()]
+    
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Get audit log statistics."""
+        now = timezone.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        total_today = AuditLog.objects.filter(timestamp__gte=today_start).count()
+        document_actions = AuditLog.objects.filter(
+            timestamp__gte=today_start,
+            module__in=['darta', 'chalani']
+        ).count()
+        user_logins = AuditLog.objects.filter(
+            timestamp__gte=today_start,
+            action='login'
+        ).count()
+        failed_attempts = AuditLog.objects.filter(
+            timestamp__gte=today_start,
+            action='login_failed'
+        ).count()
+        
+        return Response({
+            'total_today': total_today,
+            'document_actions': document_actions,
+            'user_logins': user_logins,
+            'failed_attempts': failed_attempts
+        })
+    
+    @action(detail=False, methods=['get'])
+    def export(self, request):
+        """Export audit logs as JSON."""
+        import json
+        from django.http import HttpResponse
+        
+        # Get filter parameters
+        action = request.query_params.get('action')
+        module = request.query_params.get('module')
+        user_id = request.query_params.get('user_id')
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        
+        qs = self.get_queryset()
+        
+        if action:
+            qs = qs.filter(action=action)
+        if module:
+            qs = qs.filter(module=module)
+        if user_id:
+            qs = qs.filter(user_id=user_id)
+        if date_from:
+            qs = qs.filter(timestamp__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(timestamp__date__lte=date_to)
+        
+        # Limit to last 1000 entries for performance
+        logs = qs[:1000]
+        
+        data = []
+        for log in logs:
+            data.append({
+                'id': str(log.id),
+                'user_email': log.user_email,
+                'action': log.action,
+                'module': log.module,
+                'details': log.details,
+                'ip_address': log.ip_address,
+                'timestamp': log.timestamp.isoformat()
+            })
+        
+        response = HttpResponse(
+            json.dumps(data, indent=2),
+            content_type='application/json'
+        )
+        response['Content-Disposition'] = 'attachment; filename="audit_logs.json"'
+        return response

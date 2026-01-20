@@ -9,6 +9,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db.models import Q
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
+from rest_framework import status as http_status
 
 from .models import ChalaniLetter, ChalaniRecipient, LetterTemplate
 from .serializers import (
@@ -259,3 +260,43 @@ class LetterTemplateViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [IsAdministrator()]
         return [permissions.IsAuthenticated()]
+    
+    @action(detail=False, methods=['get'])
+    def categories(self, request):
+        """Get list of template categories."""
+        categories = LetterTemplate.objects.values_list('category', flat=True).distinct()
+        # Filter out empty strings and None
+        categories = [c for c in categories if c]
+        
+        # Add default categories if not present
+        default_categories = [
+            'General',
+            'Administrative',
+            'Financial',
+            'Legal',
+            'Correspondence',
+            'Reports',
+            'Notices',
+            'Circulars'
+        ]
+        
+        all_categories = list(set(list(categories) + default_categories))
+        all_categories.sort()
+        
+        return Response(all_categories)
+    
+    @action(detail=True, methods=['post'])
+    def duplicate(self, request, pk=None):
+        """Duplicate an existing template."""
+        original = self.get_object()
+        
+        # Create a copy with modified name
+        new_template = LetterTemplate.objects.create(
+            name=f"{original.name} (Copy)",
+            name_nepali=f"{original.name_nepali} (प्रतिलिपि)" if original.name_nepali else '',
+            content=original.content,
+            category=original.category,
+            is_active=True
+        )
+        
+        return Response(LetterTemplateSerializer(new_template).data, status=status.HTTP_201_CREATED)
