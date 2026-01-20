@@ -97,6 +97,7 @@ class DartaLetter(models.Model):
     
     # SLA tracking
     sla_deadline = models.DateTimeField(null=True, blank=True)
+    is_sla_breached = models.BooleanField(default=False)
     
     class Meta:
         db_table = 'darta_letters'

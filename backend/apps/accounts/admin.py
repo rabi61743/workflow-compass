@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, UserRole, Permission
+from .models import User, UserRole, Permission, PasswordResetToken
 
 
 class UserRoleInline(admin.TabularInline):
@@ -51,3 +51,16 @@ class PermissionAdmin(admin.ModelAdmin):
     list_display = ('user', 'module', 'action')
     list_filter = ('module', 'action')
     search_fields = ('user__email', 'user__name')
+
+
+@admin.register(PasswordResetToken)
+class PasswordResetTokenAdmin(admin.ModelAdmin):
+    list_display = ('user', 'created_at', 'used_at', 'is_valid_display')
+    list_filter = ('created_at', 'used_at')
+    search_fields = ('user__email', 'user__name')
+    readonly_fields = ('token', 'created_at', 'used_at')
+    
+    def is_valid_display(self, obj):
+        return obj.is_valid()
+    is_valid_display.boolean = True
+    is_valid_display.short_description = 'Valid'

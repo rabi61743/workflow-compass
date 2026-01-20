@@ -113,6 +113,10 @@ class ChalaniLetter(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    # SLA tracking
+    sla_deadline = models.DateTimeField(null=True, blank=True)
+    is_sla_breached = models.BooleanField(default=False)
+    
     class Meta:
         db_table = 'chalani_letters'
         verbose_name = 'Chalani Letter'

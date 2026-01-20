@@ -4,7 +4,10 @@ Roles are stored in a separate table to prevent privilege escalation.
 """
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
+from django.utils import timezone
+from datetime import timedelta
 import uuid
+import secrets
 
 
 class UserManager(BaseUserManager):
@@ -62,6 +65,10 @@ class User(AbstractUser):
     
     def __str__(self):
         return f"{self.name} ({self.email})"
+    
+    def get_full_name(self):
+        """Return the user's full name."""
+        return self.name
     
     def get_roles(self):
         """Get all roles for this user."""
@@ -140,3 +147,54 @@ class Permission(models.Model):
     
     def __str__(self):
         return f"{self.user.name} - {self.module}:{self.action}"
+
+
+class PasswordResetToken(models.Model):
+    """
+    Token for password reset functionality.
+    Tokens expire after PASSWORD_RESET_TIMEOUT hours (default 24).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='password_reset_tokens'
+    )
+    token = models.CharField(max_length=100, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        db_table = 'password_reset_tokens'
+        verbose_name = 'Password Reset Token'
+        verbose_name_plural = 'Password Reset Tokens'
+    
+    def __str__(self):
+        return f"Reset token for {self.user.email}"
+    
+    @classmethod
+    def create_for_user(cls, user):
+        """Create a new password reset token for a user."""
+        # Invalidate any existing unused tokens
+        cls.objects.filter(user=user, used_at__isnull=True).delete()
+        
+        # Generate secure token
+        token = secrets.token_urlsafe(32)
+        
+        return cls.objects.create(user=user, token=token)
+    
+    def is_valid(self):
+        """Check if the token is still valid."""
+        if self.used_at:
+            return False
+        
+        from django.conf import settings
+        timeout_hours = getattr(settings, 'PASSWORD_RESET_TIMEOUT', 24)
+        expiry_time = self.created_at + timedelta(hours=timeout_hours)
+        
+        return timezone.now() < expiry_time
+    
+    def use(self):
+        """Mark the token as used."""
+        self.used_at = timezone.now()
+        self.save(update_fields=['used_at'])
