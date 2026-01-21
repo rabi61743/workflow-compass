@@ -15,6 +15,8 @@ class Office(models.Model):
         ('regional', 'Regional Office'),
         ('branch', 'Branch Office'),
         ('department', 'Department'),
+        ('section', 'Section'),
+        ('unit', 'Unit'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -23,6 +25,11 @@ class Office(models.Model):
     name_nepali = models.CharField(max_length=255, blank=True)
     type = models.CharField(max_length=20, choices=OFFICE_TYPE_CHOICES)
     location = models.CharField(max_length=255, blank=True)
+    order = models.IntegerField(default=0, help_text='Sort order within the same parent office')
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=50, blank=True)
+    path = models.CharField(max_length=500, blank=True)
+    depth = models.IntegerField(default=0, editable=False)
     
     # Hierarchical relationship
     parent = models.ForeignKey(
@@ -53,10 +60,20 @@ class Office(models.Model):
         db_table = 'offices'
         verbose_name = 'Office'
         verbose_name_plural = 'Offices'
-        ordering = ['name']
+        ordering = ['order', 'name']
     
     def __str__(self):
         return f"{self.code} - {self.name}"
+
+    def save(self, *args, **kwargs):
+        if self.parent:
+            self.depth = (self.parent.depth or 0) + 1
+            parent_path = self.parent.path or self.parent.code
+            self.path = f"{parent_path}/{self.code}"
+        else:
+            self.depth = 0
+            self.path = self.code
+        super().save(*args, **kwargs)
     
     def get_ancestors(self):
         """Get all parent offices up to the root."""
