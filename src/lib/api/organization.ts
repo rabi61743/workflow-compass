@@ -222,11 +222,13 @@ export const organizationApi = {
   },
 
   async activate(id: string): Promise<Office> {
-    return this.update(id, {} as any);
+    const response = await apiClient.patch<Office>(`/organization/offices/${id}/`, { is_active: true });
+    return response.data;
   },
 
   async deactivate(id: string): Promise<Office> {
-    return this.update(id, {} as any);
+    const response = await apiClient.patch<Office>(`/organization/offices/${id}/`, { is_active: false });
+    return response.data;
   },
 };
 

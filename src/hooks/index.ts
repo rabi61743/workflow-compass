@@ -67,6 +67,8 @@ export {
   useCreateAssignment,
   useDeleteAssignment,
   useCreateDesignation,
+  useUpdateDesignation,
+  useDeleteDesignation,
 } from './use-organization';
 
 // Workflow hooks
@@ -78,6 +80,9 @@ export {
   useSlaStatus,
   useWorkflowAction,
   useDelegateTask,
+  useNextApprover,
+  useDelegations,
+  useCreateDelegation,
 } from './use-workflow';
 
 // Notification hooks

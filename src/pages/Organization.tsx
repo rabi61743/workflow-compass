@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useOfficeList, useOfficeHierarchy, useOfficeMembers, useCreateOffice, useUpdateOffice, useDeleteOffice } from '@/hooks/use-organization';
+import { useOfficeList, useOfficeHierarchy, useOfficeMembers, useCreateOffice, useUpdateOffice, useDeleteOffice, useDesignations, useCreateDesignation, useUpdateDesignation, useDeleteDesignation } from '@/hooks/use-organization';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,12 +35,14 @@ import {
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Plus, Search, ChevronRight, Building2, MapPin, Edit, Users,
-  Crown, User, Mail, Phone, ChevronDown,
+  Crown, User, Mail, Phone, ChevronDown, Trash2, Shield, Check,
 } from 'lucide-react';
-import { Office, OfficeTreeNode, UserOfficeAssignment } from '@/lib/types';
+import { Office, OfficeTreeNode, UserOfficeAssignment, Designation } from '@/lib/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -343,6 +345,7 @@ export default function Organization() {
   const { hasRole } = useAuth();
   const isAdmin = hasRole(['administrator']);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('hierarchy');
   const [officeDialog, setOfficeDialog] = useState<{
     open: boolean;
     mode: 'create' | 'edit';
@@ -354,11 +357,31 @@ export default function Organization() {
     office: OfficeTreeNode | null;
   }>({ open: false, office: null });
 
+  // Designation state
+  const [desigDialog, setDesigDialog] = useState<{
+    open: boolean;
+    mode: 'create' | 'edit';
+    designation: Designation | null;
+  }>({ open: false, mode: 'create', designation: null });
+  const [desigForm, setDesigForm] = useState({
+    name: '',
+    nameNepali: '',
+    level: 0,
+    canApprove: false,
+    canDispatch: false,
+    isGlobal: true,
+    officeId: '',
+  });
+
   // API hooks
   const { data: officesData, isLoading: isLoadingList } = useOfficeList({});
   const { data: hierarchy, isLoading: isLoadingTree } = useOfficeHierarchy();
+  const { data: designationsData, isLoading: isLoadingDesignations } = useDesignations();
   const createOffice = useCreateOffice();
   const updateOffice = useUpdateOffice();
+  const createDesignation = useCreateDesignation();
+  const updateDesignation = useUpdateDesignation();
+  const deleteDesignation = useDeleteDesignation();
 
   const offices = officesData?.results || [];
   const treeNodes = hierarchy || [];
@@ -455,6 +478,48 @@ export default function Organization() {
   };
 
   const isSubmitting = createOffice.isPending || updateOffice.isPending;
+  const designations = designationsData?.results || [];
+  const isDesigSubmitting = createDesignation.isPending || updateDesignation.isPending;
+
+  const openDesigCreate = () => {
+    setDesigForm({ name: '', nameNepali: '', level: 0, canApprove: false, canDispatch: false, isGlobal: true, officeId: '' });
+    setDesigDialog({ open: true, mode: 'create', designation: null });
+  };
+
+  const openDesigEdit = (d: Designation) => {
+    setDesigForm({
+      name: d.name,
+      nameNepali: d.nameNepali || '',
+      level: d.level,
+      canApprove: d.canApprove,
+      canDispatch: d.canDispatch,
+      isGlobal: d.isGlobal,
+      officeId: d.officeId || '',
+    });
+    setDesigDialog({ open: true, mode: 'edit', designation: d });
+  };
+
+  const closeDesigDialog = () => {
+    setDesigDialog({ open: false, mode: 'create', designation: null });
+  };
+
+  const handleDesigSubmit = () => {
+    if (!desigForm.name) { toast.error('Designation name is required'); return; }
+    const payload: any = {
+      name: desigForm.name,
+      name_nepali: desigForm.nameNepali || undefined,
+      level: desigForm.level,
+      can_approve: desigForm.canApprove,
+      can_dispatch: desigForm.canDispatch,
+      is_global: desigForm.isGlobal,
+      office: desigForm.isGlobal ? undefined : desigForm.officeId || undefined,
+    };
+    if (desigDialog.mode === 'create') {
+      createDesignation.mutate(payload, { onSuccess: () => closeDesigDialog() });
+    } else if (desigDialog.designation) {
+      updateDesignation.mutate({ id: desigDialog.designation.id, data: payload }, { onSuccess: () => closeDesigDialog() });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -462,92 +527,219 @@ export default function Organization() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Organization Structure</h1>
           <p className="text-muted-foreground">
-            Manage offices, departments, sections, and organizational hierarchy
+            Manage offices, departments, sections, designations, and organizational hierarchy
           </p>
         </div>
         {isAdmin && (
-          <Button onClick={openCreateDialog}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Office
-          </Button>
+          <div className="flex gap-2">
+            {activeTab === 'designations' ? (
+              <Button onClick={openDesigCreate}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Designation
+              </Button>
+            ) : (
+              <Button onClick={openCreateDialog}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Office
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-6">
-        {[
-          { label: 'Total', count: stats.total, icon: Building2 },
-          { label: 'Head Office', count: stats.headOffice },
-          { label: 'Regional', count: stats.regional },
-          { label: 'Branches', count: stats.branch },
-          { label: 'Departments', count: stats.department },
-          { label: 'Sections', count: stats.section },
-        ].map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="pt-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{stat.label}</p>
-                  <p className="text-2xl font-bold">{stat.count}</p>
-                </div>
-                {stat.icon && <stat.icon className="h-8 w-8 text-muted-foreground/50" />}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="hierarchy">
+            <Building2 className="h-4 w-4 mr-1.5" />
+            Offices
+          </TabsTrigger>
+          <TabsTrigger value="designations">
+            <Shield className="h-4 w-4 mr-1.5" />
+            Designations
+          </TabsTrigger>
+        </TabsList>
+
+        {/* === Offices Tab === */}
+        <TabsContent value="hierarchy" className="space-y-6 mt-4">
+          {/* Stats */}
+          <div className="grid gap-4 md:grid-cols-6">
+            {[
+              { label: 'Total', count: stats.total, icon: Building2 },
+              { label: 'Head Office', count: stats.headOffice },
+              { label: 'Regional', count: stats.regional },
+              { label: 'Branches', count: stats.branch },
+              { label: 'Departments', count: stats.department },
+              { label: 'Sections', count: stats.section },
+            ].map((stat) => (
+              <Card key={stat.label}>
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">{stat.label}</p>
+                      <p className="text-2xl font-bold">{stat.count}</p>
+                    </div>
+                    {stat.icon && <stat.icon className="h-8 w-8 text-muted-foreground/50" />}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Search & Tree */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Office Hierarchy</CardTitle>
+              <CardDescription>
+                Click on an office to view details and members. Use the tree to browse the organizational structure.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search offices by name, code, or location..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+
+              <div className="space-y-0.5">
+                {isLoading ? (
+                  <div className="space-y-3">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="flex items-center gap-3 p-3">
+                        <Skeleton className="h-8 w-8 rounded-lg" />
+                        <div className="space-y-2 flex-1">
+                          <Skeleton className="h-4 w-1/3" />
+                          <Skeleton className="h-3 w-1/4" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : filteredTree.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {searchQuery ? `No offices found matching "${searchQuery}"` : 'No offices found'}
+                  </div>
+                ) : (
+                  filteredTree.map(node => (
+                    <OfficeTreeNodeView
+                      key={node.id}
+                      node={node}
+                      level={0}
+                      onEdit={openEditDialog}
+                      onViewDetails={(office) => setDetailSheet({ open: true, office })}
+                    />
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
+        </TabsContent>
 
-      {/* Search & Tree */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Office Hierarchy</CardTitle>
-          <CardDescription>
-            Click on an office to view details and members. Use the tree to browse the organizational structure.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search offices by name, code, or location..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
+        {/* === Designations Tab === */}
+        <TabsContent value="designations" className="space-y-6 mt-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Total Designations</CardDescription>
+                <CardTitle className="text-3xl">{designations.length}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Global Designations</CardDescription>
+                <CardTitle className="text-3xl">{designations.filter(d => d.isGlobal).length}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Can Approve</CardDescription>
+                <CardTitle className="text-3xl">{designations.filter(d => d.canApprove).length}</CardTitle>
+              </CardHeader>
+            </Card>
           </div>
 
-          {/* Tree View */}
-          <div className="space-y-0.5">
-            {isLoading ? (
-              <div className="space-y-3">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3">
-                    <Skeleton className="h-8 w-8 rounded-lg" />
-                    <div className="space-y-2 flex-1">
-                      <Skeleton className="h-4 w-1/3" />
-                      <Skeleton className="h-3 w-1/4" />
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Designations</CardTitle>
+              <CardDescription>
+                Manage job designations, approval authorities, and dispatch permissions
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingDesignations ? (
+                <div className="space-y-3">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 p-3">
+                      <Skeleton className="h-8 w-8 rounded" />
+                      <div className="space-y-1 flex-1">
+                        <Skeleton className="h-4 w-1/3" />
+                        <Skeleton className="h-3 w-1/4" />
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : filteredTree.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                {searchQuery ? `No offices found matching "${searchQuery}"` : 'No offices found'}
-              </div>
-            ) : (
-              filteredTree.map(node => (
-                <OfficeTreeNodeView
-                  key={node.id}
-                  node={node}
-                  level={0}
-                  onEdit={openEditDialog}
-                  onViewDetails={(office) => setDetailSheet({ open: true, office })}
-                />
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
+                  ))}
+                </div>
+              ) : designations.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No designations found. Click "Add Designation" to create one.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {designations.map((d) => (
+                    <div
+                      key={d.id}
+                      className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 group"
+                    >
+                      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">
+                        L{d.level}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{d.name}</p>
+                          {d.nameNepali && (
+                            <span className="text-xs text-muted-foreground">({d.nameNepali})</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            {d.isGlobal ? 'Global' : 'Office-specific'}
+                          </Badge>
+                          {d.canApprove && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-green-200 text-green-700 dark:text-green-400">
+                              <Check className="h-2.5 w-2.5 mr-0.5" /> Approve
+                            </Badge>
+                          )}
+                          {d.canDispatch && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-200 text-blue-700 dark:text-blue-400">
+                              <Check className="h-2.5 w-2.5 mr-0.5" /> Dispatch
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      {isAdmin && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDesigEdit(d)}>
+                            <Edit className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive"
+                            onClick={() => deleteDesignation.mutate(d.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Office Detail Sheet */}
       <OfficeDetailSheet
@@ -556,7 +748,7 @@ export default function Organization() {
         onClose={() => setDetailSheet({ open: false, office: null })}
       />
 
-      {/* Create/Edit Dialog */}
+      {/* Create/Edit Office Dialog */}
       <Dialog open={officeDialog.open} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
@@ -681,6 +873,119 @@ export default function Organization() {
             </Button>
             <Button onClick={handleSubmit} disabled={isSubmitting}>
               {isSubmitting ? 'Saving...' : officeDialog.mode === 'create' ? 'Create' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create/Edit Designation Dialog */}
+      <Dialog open={desigDialog.open} onOpenChange={(open) => !open && closeDesigDialog()}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle>
+              {desigDialog.mode === 'create' ? 'Add Designation' : 'Edit Designation'}
+            </DialogTitle>
+            <DialogDescription>
+              {desigDialog.mode === 'create'
+                ? 'Create a new job designation'
+                : 'Update designation details'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Name *</Label>
+                <Input
+                  placeholder="e.g., Senior Engineer"
+                  value={desigForm.name}
+                  onChange={(e) => setDesigForm({ ...desigForm, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Name (Nepali)</Label>
+                <Input
+                  placeholder="नेपाली नाम"
+                  value={desigForm.nameNepali}
+                  onChange={(e) => setDesigForm({ ...desigForm, nameNepali: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Hierarchy Level</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={desigForm.level}
+                  onChange={(e) => setDesigForm({ ...desigForm, level: parseInt(e.target.value) || 0 })}
+                />
+                <p className="text-xs text-muted-foreground">Lower = higher authority</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Scope</Label>
+                <Select
+                  value={desigForm.isGlobal ? 'global' : 'office'}
+                  onValueChange={(v) => setDesigForm({ ...desigForm, isGlobal: v === 'global' })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="global">Global (all offices)</SelectItem>
+                    <SelectItem value="office">Office-specific</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {!desigForm.isGlobal && (
+              <div className="space-y-2">
+                <Label>Office</Label>
+                <Select
+                  value={desigForm.officeId}
+                  onValueChange={(v) => setDesigForm({ ...desigForm, officeId: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select office" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {offices.map((o) => (
+                      <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <Separator />
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Permissions</Label>
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="canApprove"
+                    checked={desigForm.canApprove}
+                    onCheckedChange={(c) => setDesigForm({ ...desigForm, canApprove: c as boolean })}
+                  />
+                  <Label htmlFor="canApprove" className="text-sm cursor-pointer">Can Approve Documents</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="canDispatch"
+                    checked={desigForm.canDispatch}
+                    onCheckedChange={(c) => setDesigForm({ ...desigForm, canDispatch: c as boolean })}
+                  />
+                  <Label htmlFor="canDispatch" className="text-sm cursor-pointer">Can Dispatch Chalani</Label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDesigDialog} disabled={isDesigSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleDesigSubmit} disabled={isDesigSubmitting}>
+              {isDesigSubmitting ? 'Saving...' : desigDialog.mode === 'create' ? 'Create' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>
