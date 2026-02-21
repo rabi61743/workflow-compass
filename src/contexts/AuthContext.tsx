@@ -35,7 +35,7 @@ function transformUser(apiUser: any): User {
     avatar: apiUser.avatar,
     permissions: Array.from(permissionMap.entries()).map(([module, actions]) => ({
       module,
-      actions: Array.from(actions),
+      actions: Array.from(actions) as ('view' | 'create' | 'edit' | 'delete' | 'approve')[],
     })),
     isActive: true,
     createdAt: new Date().toISOString(),

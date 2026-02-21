@@ -31,11 +31,98 @@ export interface Office {
   id: string;
   code: string;
   name: string;
-  type: 'head_office' | 'regional' | 'branch' | 'department';
+  nameNepali?: string;
+  type: 'head_office' | 'regional' | 'branch' | 'department' | 'section' | 'unit';
   location: string;
+  order?: number;
+  email?: string;
+  phone?: string;
+  path?: string;
+  depth?: number;
   parentId?: string;
+  parentName?: string;
   headUserId?: string;
+  headName?: string;
+  employeeCount?: number;
+  memberCount?: number;
   isActive: boolean;
+}
+
+export interface OfficeTreeNode extends Office {
+  children: OfficeTreeNode[];
+  memberCount: number;
+}
+
+export interface Designation {
+  id: string;
+  name: string;
+  nameNepali?: string;
+  officeId?: string;
+  level: number;
+  canApprove: boolean;
+  canDispatch: boolean;
+  isGlobal: boolean;
+  isActive: boolean;
+}
+
+export type AssignmentType = 'primary' | 'secondary' | 'deputation' | 'acting';
+
+export interface UserOfficeAssignment {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userAvatar?: string;
+  officeId: string;
+  officeName: string;
+  officeCode: string;
+  officeType: string;
+  designationId?: string;
+  designationName: string;
+  assignmentType: AssignmentType;
+  isOfficeHead: boolean;
+  reportingToId?: string;
+  reportingToName?: string;
+  startDate: string;
+  endDate?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReportingStructure {
+  id: string;
+  subordinateId: string;
+  subordinateName: string;
+  supervisorId: string;
+  supervisorName: string;
+  isPrimary: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string;
+}
+
+export interface RecipientSearchResult {
+  id: string;
+  type: 'user' | 'office' | 'designation';
+  name: string;
+  subtitle: string;
+  officeId: string | null;
+  officeName: string;
+  officeCode: string;
+  userId: string | null;
+  designation: string;
+  isOfficeHead: boolean;
+}
+
+export interface OfficeMember {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  designationName: string;
+  designationLevel: number;
+  assignmentType: AssignmentType;
+  isOfficeHead: boolean;
 }
 
 export interface Document {

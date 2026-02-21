@@ -15,7 +15,9 @@ import {
   FileIcon,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { mockOffices, mockDartaLetters, mockLetterTemplates } from '@/lib/mock-data';
+import { mockDartaLetters, mockLetterTemplates } from '@/lib/mock-data';
+import { RecipientSelector, SelectedRecipient } from '@/components/organization/RecipientSelector';
+import { useOfficeList } from '@/hooks/use-organization';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,7 +30,6 @@ import { Separator } from '@/components/ui/separator';
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -73,14 +74,6 @@ interface SelectedFile {
   file: File;
 }
 
-interface CCRecipient {
-  id: string;
-  name: string;
-  organization?: string;
-  isInternal: boolean;
-  officeId?: string;
-}
-
 export default function NewChalani() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -89,12 +82,15 @@ export default function NewChalani() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [content, setContent] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
-  const [ccRecipients, setCcRecipients] = useState<CCRecipient[]>([]);
+  const [ccRecipients, setCcRecipients] = useState<SelectedRecipient[]>([]);
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [showDartaSelector, setShowDartaSelector] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
 
-  // Pre-fill reference darta if coming from darta detail
+  // For internal receiver selection
+  const { data: officesData } = useOfficeList({});
+  const offices = officesData?.results || [];
+
   const referenceDartaId = searchParams.get('ref');
 
   const form = useForm<ChalaniFormValues>({
@@ -113,7 +109,6 @@ export default function NewChalani() {
 
   const receiverType = form.watch('receiverType');
 
-  // Pre-fill from reference darta
   useEffect(() => {
     if (referenceDartaId) {
       const refDarta = mockDartaLetters.find(d => d.id === referenceDartaId);
@@ -125,11 +120,9 @@ export default function NewChalani() {
     }
   }, [referenceDartaId, form]);
 
-  // Handle file selection
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-
     const newFiles: SelectedFile[] = [];
     Array.from(files).forEach((file) => {
       if (file.size > 10 * 1024 * 1024) {
@@ -139,7 +132,6 @@ export default function NewChalani() {
       const id = `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       newFiles.push({ id, file });
     });
-
     setSelectedFiles((prev) => [...prev, ...newFiles]);
     e.target.value = '';
   }, []);
@@ -148,20 +140,14 @@ export default function NewChalani() {
     setSelectedFiles((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
-  // Add CC recipient
-  const addCCRecipient = useCallback((recipient: Omit<CCRecipient, 'id'>) => {
-    const newRecipient: CCRecipient = {
-      id: `cc-${Date.now()}`,
-      ...recipient,
-    };
-    setCcRecipients((prev) => [...prev, newRecipient]);
+  const addCCRecipient = useCallback((recipient: SelectedRecipient) => {
+    setCcRecipients((prev) => [...prev, recipient]);
   }, []);
 
   const removeCCRecipient = useCallback((id: string) => {
     setCcRecipients((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
-  // Apply template
   const applyTemplate = useCallback((templateId: string) => {
     const template = mockLetterTemplates.find((t) => t.id === templateId);
     if (template) {
@@ -172,7 +158,6 @@ export default function NewChalani() {
     }
   }, []);
 
-  // Link reference darta
   const linkDarta = useCallback((dartaId: string) => {
     const darta = mockDartaLetters.find((d) => d.id === dartaId);
     if (darta) {
@@ -189,23 +174,18 @@ export default function NewChalani() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  // Handle form submission
   const onSubmit = async (data: ChalaniFormValues) => {
     if (!content.trim() || content === '<p></p>') {
       toast.error('Please write the letter content');
       return;
     }
-
     setIsSubmitting(true);
-
     try {
       await new Promise((resolve) => setTimeout(resolve, 1500));
-
       console.log('Form data:', data);
       console.log('Content:', content);
       console.log('Files:', selectedFiles);
       console.log('CC Recipients:', ccRecipients);
-
       toast.success('Chalani draft created successfully');
       navigate('/chalani');
     } catch (error) {
@@ -254,11 +234,7 @@ export default function NewChalani() {
                             className="grid grid-cols-2 gap-4"
                           >
                             <div>
-                              <RadioGroupItem
-                                value="external"
-                                id="external"
-                                className="peer sr-only"
-                              />
+                              <RadioGroupItem value="external" id="external" className="peer sr-only" />
                               <Label
                                 htmlFor="external"
                                 className={cn(
@@ -268,17 +244,11 @@ export default function NewChalani() {
                               >
                                 <ExternalLink className="mb-3 h-6 w-6" />
                                 <span className="font-medium">External</span>
-                                <span className="text-xs text-muted-foreground text-center mt-1">
-                                  Outside organization
-                                </span>
+                                <span className="text-xs text-muted-foreground text-center mt-1">Outside organization</span>
                               </Label>
                             </div>
                             <div>
-                              <RadioGroupItem
-                                value="internal"
-                                id="internal"
-                                className="peer sr-only"
-                              />
+                              <RadioGroupItem value="internal" id="internal" className="peer sr-only" />
                               <Label
                                 htmlFor="internal"
                                 className={cn(
@@ -288,9 +258,7 @@ export default function NewChalani() {
                               >
                                 <Building2 className="mb-3 h-6 w-6" />
                                 <span className="font-medium">Internal</span>
-                                <span className="text-xs text-muted-foreground text-center mt-1">
-                                  Within Nepal Telecom
-                                </span>
+                                <span className="text-xs text-muted-foreground text-center mt-1">Within Nepal Telecom</span>
                               </Label>
                             </div>
                           </RadioGroup>
@@ -320,7 +288,7 @@ export default function NewChalani() {
                           <FormLabel>Select Office *</FormLabel>
                           <Select onValueChange={(value) => {
                             field.onChange(value);
-                            const office = mockOffices.find(o => o.id === value);
+                            const office = offices.find(o => o.id === value);
                             if (office) {
                               form.setValue('receiverName', office.name);
                               form.setValue('receiverOrg', 'Nepal Telecom');
@@ -332,12 +300,10 @@ export default function NewChalani() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {mockOffices.filter(o => o.isActive).map((office) => (
+                              {offices.filter(o => o.isActive).map((office) => (
                                 <SelectItem key={office.id} value={office.id}>
                                   <div className="flex items-center gap-2">
-                                    <Badge variant="outline" className="text-xs">
-                                      {office.code}
-                                    </Badge>
+                                    <Badge variant="outline" className="text-xs">{office.code}</Badge>
                                     {office.name}
                                   </div>
                                 </SelectItem>
@@ -385,12 +351,7 @@ export default function NewChalani() {
                           <FormItem>
                             <FormLabel>Address</FormLabel>
                             <FormControl>
-                              <Textarea
-                                placeholder="Enter receiver address"
-                                className="resize-none"
-                                rows={2}
-                                {...field}
-                              />
+                              <Textarea placeholder="Enter receiver address" className="resize-none" rows={2} {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -401,7 +362,7 @@ export default function NewChalani() {
                 </CardContent>
               </Card>
 
-              {/* Letter Details */}
+              {/* Letter Content */}
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -419,9 +380,7 @@ export default function NewChalani() {
                       <DialogContent className="sm:max-w-lg">
                         <DialogHeader>
                           <DialogTitle>Select Template</DialogTitle>
-                          <DialogDescription>
-                            Choose a template to start with
-                          </DialogDescription>
+                          <DialogDescription>Choose a template to start with</DialogDescription>
                         </DialogHeader>
                         <ScrollArea className="h-[400px] pr-4">
                           <div className="space-y-2">
@@ -436,9 +395,7 @@ export default function NewChalani() {
                               >
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="font-medium">{template.name}</span>
-                                  <Badge variant="secondary" className="text-xs">
-                                    {template.category}
-                                  </Badge>
+                                  <Badge variant="secondary" className="text-xs">{template.category}</Badge>
                                 </div>
                                 <p className="text-xs text-muted-foreground line-clamp-2">
                                   {template.content.replace(/<[^>]*>/g, '').slice(0, 100)}...
@@ -517,20 +474,12 @@ export default function NewChalani() {
                     <div className="p-3 rounded-lg border bg-muted/30">
                       <div className="flex items-center justify-between mb-1">
                         <Badge variant="outline">{referenceDarta.dartaNumber}</Badge>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => form.setValue('referenceDarta', '')}
-                        >
+                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => form.setValue('referenceDarta', '')}>
                           <X className="h-3 w-3" />
                         </Button>
                       </div>
                       <p className="text-sm line-clamp-2">{referenceDarta.subject}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        From: {referenceDarta.senderOrg}
-                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">From: {referenceDarta.senderOrg}</p>
                     </div>
                   ) : (
                     <Dialog open={showDartaSelector} onOpenChange={setShowDartaSelector}>
@@ -543,9 +492,7 @@ export default function NewChalani() {
                       <DialogContent>
                         <DialogHeader>
                           <DialogTitle>Select Reference Darta</DialogTitle>
-                          <DialogDescription>
-                            Choose an incoming letter to reference
-                          </DialogDescription>
+                          <DialogDescription>Choose an incoming letter to reference</DialogDescription>
                         </DialogHeader>
                         <ScrollArea className="h-[300px] pr-4">
                           <div className="space-y-2">
@@ -557,9 +504,7 @@ export default function NewChalani() {
                               >
                                 <div className="flex items-center gap-2 mb-1">
                                   <Badge variant="outline">{darta.dartaNumber}</Badge>
-                                  <span className="text-xs text-muted-foreground">
-                                    {darta.senderOrg}
-                                  </span>
+                                  <span className="text-xs text-muted-foreground">{darta.senderOrg}</span>
                                 </div>
                                 <p className="text-sm line-clamp-1">{darta.subject}</p>
                               </div>
@@ -572,55 +517,21 @@ export default function NewChalani() {
                 </CardContent>
               </Card>
 
-              {/* CC Recipients */}
+              {/* CC Recipients - Now using RecipientSelector */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">CC Recipients</CardTitle>
-                  <CardDescription>Add copy recipients</CardDescription>
+                  <CardDescription>Add copy recipients from org hierarchy</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  {ccRecipients.length > 0 && (
-                    <div className="space-y-2">
-                      {ccRecipients.map((recipient) => (
-                        <div
-                          key={recipient.id}
-                          className="flex items-center justify-between p-2 bg-muted/50 rounded-md"
-                        >
-                          <div>
-                            <p className="text-sm font-medium">{recipient.name}</p>
-                            {recipient.organization && (
-                              <p className="text-xs text-muted-foreground">
-                                {recipient.organization}
-                              </p>
-                            )}
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => removeCCRecipient(recipient.id)}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button type="button" variant="outline" size="sm" className="w-full">
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add CC
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Add CC Recipient</DialogTitle>
-                      </DialogHeader>
-                      <AddCCForm onAdd={addCCRecipient} offices={mockOffices} />
-                    </DialogContent>
-                  </Dialog>
+                <CardContent>
+                  <RecipientSelector
+                    selectedRecipients={ccRecipients}
+                    onAdd={addCCRecipient}
+                    onRemove={removeCCRecipient}
+                    recipientRole="cc"
+                    label="CC (Bodhartha)"
+                    placeholder="Search recipients..."
+                  />
                 </CardContent>
               </Card>
 
@@ -632,46 +543,26 @@ export default function NewChalani() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
-                    <input
-                      type="file"
-                      id="chalani-file-upload"
-                      multiple
-                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                    />
+                    <input type="file" id="chalani-file-upload" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={handleFileSelect} className="hidden" />
                     <label htmlFor="chalani-file-upload" className="cursor-pointer">
                       <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                       <p className="text-sm font-medium">Click to upload</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        PDF, DOC, JPG, PNG (max 10MB)
-                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">PDF, DOC, JPG, PNG (max 10MB)</p>
                     </label>
                   </div>
 
                   {selectedFiles.length > 0 && (
                     <div className="space-y-2">
                       {selectedFiles.map((file) => (
-                        <div
-                          key={file.id}
-                          className="flex items-center justify-between p-2 bg-muted/50 rounded-md"
-                        >
+                        <div key={file.id} className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
                           <div className="flex items-center gap-2 min-w-0">
                             <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                             <div className="min-w-0">
                               <p className="text-sm font-medium truncate">{file.file.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {formatFileSize(file.file.size)}
-                              </p>
+                              <p className="text-xs text-muted-foreground">{formatFileSize(file.file.size)}</p>
                             </div>
                           </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 flex-shrink-0"
-                            onClick={() => removeFile(file.id)}
-                          >
+                          <Button type="button" variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => removeFile(file.id)}>
                             <X className="h-3 w-3" />
                           </Button>
                         </div>
@@ -709,12 +600,7 @@ export default function NewChalani() {
                     <Button type="submit" className="w-full" disabled={isSubmitting}>
                       {isSubmitting ? 'Saving...' : 'Save as Draft'}
                     </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => navigate('/chalani')}
-                    >
+                    <Button type="button" variant="outline" className="w-full" onClick={() => navigate('/chalani')}>
                       Cancel
                     </Button>
                   </div>
@@ -724,110 +610,6 @@ export default function NewChalani() {
           </div>
         </form>
       </Form>
-    </div>
-  );
-}
-
-// CC Recipient Form Component
-function AddCCForm({
-  onAdd,
-  offices,
-}: {
-  onAdd: (recipient: Omit<CCRecipient, 'id'>) => void;
-  offices: typeof mockOffices;
-}) {
-  const [isInternal, setIsInternal] = useState(false);
-  const [name, setName] = useState('');
-  const [organization, setOrganization] = useState('');
-  const [officeId, setOfficeId] = useState('');
-
-  const handleSubmit = () => {
-    if (!name.trim() && !officeId) {
-      toast.error('Please enter recipient details');
-      return;
-    }
-
-    if (isInternal && officeId) {
-      const office = offices.find(o => o.id === officeId);
-      onAdd({
-        name: office?.name || '',
-        organization: 'Nepal Telecom',
-        isInternal: true,
-        officeId,
-      });
-    } else {
-      onAdd({
-        name: name.trim(),
-        organization: organization.trim(),
-        isInternal: false,
-      });
-    }
-
-    // Reset
-    setName('');
-    setOrganization('');
-    setOfficeId('');
-  };
-
-  return (
-    <div className="space-y-4 py-4">
-      <RadioGroup
-        value={isInternal ? 'internal' : 'external'}
-        onValueChange={(v) => setIsInternal(v === 'internal')}
-        className="flex gap-4"
-      >
-        <div className="flex items-center space-x-2">
-          <RadioGroupItem value="external" id="cc-external" />
-          <Label htmlFor="cc-external">External</Label>
-        </div>
-        <div className="flex items-center space-x-2">
-          <RadioGroupItem value="internal" id="cc-internal" />
-          <Label htmlFor="cc-internal">Internal Office</Label>
-        </div>
-      </RadioGroup>
-
-      {isInternal ? (
-        <div className="space-y-2">
-          <Label>Select Office</Label>
-          <Select value={officeId} onValueChange={setOfficeId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select an office" />
-            </SelectTrigger>
-            <SelectContent>
-              {offices.filter(o => o.isActive).map((office) => (
-                <SelectItem key={office.id} value={office.id}>
-                  {office.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      ) : (
-        <>
-          <div className="space-y-2">
-            <Label>Name</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Enter name"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Organization</Label>
-            <Input
-              value={organization}
-              onChange={(e) => setOrganization(e.target.value)}
-              placeholder="Enter organization"
-            />
-          </div>
-        </>
-      )}
-
-      <DialogFooter>
-        <Button type="button" onClick={handleSubmit}>
-          Add Recipient
-        </Button>
-      </DialogFooter>
     </div>
   );
 }
