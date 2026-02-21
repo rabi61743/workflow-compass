@@ -249,3 +249,35 @@ export function useCreateDesignation() {
     },
   });
 }
+
+// Update designation
+export function useUpdateDesignation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => organizationApi.updateDesignation(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.organization.all });
+      toast.success('Designation updated');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to update designation');
+    },
+  });
+}
+
+// Delete designation
+export function useDeleteDesignation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: organizationApi.deleteDesignation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.organization.all });
+      toast.success('Designation deleted');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to delete designation');
+    },
+  });
+}
