@@ -499,6 +499,193 @@ class WorkflowActionView(APIView):
         return Response(WorkflowStepSerializer(step).data, status=201)
 
 
+class NextApproverView(APIView):
+    """
+    Get next approver based on organizational hierarchy.
+    
+    GET /api/workflow/next-approver/?user_id=<uuid>&document_type=darta
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.contrib.auth import get_user_model
+        from apps.organization.models import UserOfficeAssignment, ReportingStructure
+        User = get_user_model()
+
+        user_id = request.query_params.get('user_id', str(request.user.id))
+        try:
+            target_user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=404)
+
+        suggestions = []
+
+        # 1. Direct reporting structure
+        reporting = ReportingStructure.objects.filter(
+            subordinate=target_user,
+            effective_to__isnull=True,
+        ).select_related('supervisor').order_by('-is_primary')
+
+        for rel in reporting:
+            suggestions.append({
+                'id': str(rel.supervisor.id),
+                'name': rel.supervisor.name,
+                'email': rel.supervisor.email,
+                'source': 'reporting_structure',
+                'is_primary': rel.is_primary,
+            })
+
+        # 2. Office head of the user's primary office
+        primary_assignment = UserOfficeAssignment.objects.filter(
+            user=target_user,
+            assignment_type='primary',
+            is_active=True,
+        ).select_related('office').first()
+
+        if primary_assignment and primary_assignment.office:
+            office = primary_assignment.office
+            # Office head
+            if office.head and office.head != target_user:
+                if not any(s['id'] == str(office.head.id) for s in suggestions):
+                    suggestions.append({
+                        'id': str(office.head.id),
+                        'name': office.head.name,
+                        'email': office.head.email,
+                        'source': 'office_head',
+                        'office_name': office.name,
+                    })
+
+            # 3. Parent office head
+            if office.parent and office.parent.head and office.parent.head != target_user:
+                if not any(s['id'] == str(office.parent.head.id) for s in suggestions):
+                    suggestions.append({
+                        'id': str(office.parent.head.id),
+                        'name': office.parent.head.name,
+                        'email': office.parent.head.email,
+                        'source': 'parent_office_head',
+                        'office_name': office.parent.name,
+                    })
+
+        # 4. Users with approving designation in the same office
+        if primary_assignment:
+            approvers = UserOfficeAssignment.objects.filter(
+                office=primary_assignment.office,
+                designation__can_approve=True,
+                is_active=True,
+            ).exclude(user=target_user).select_related('user', 'designation')
+
+            for a in approvers[:5]:
+                if not any(s['id'] == str(a.user.id) for s in suggestions):
+                    suggestions.append({
+                        'id': str(a.user.id),
+                        'name': a.user.name,
+                        'email': a.user.email,
+                        'source': 'designation_approver',
+                        'designation': a.designation.name if a.designation else '',
+                        'office_name': primary_assignment.office.name,
+                    })
+
+        return Response({
+            'user_id': str(target_user.id),
+            'user_name': target_user.name,
+            'suggestions': suggestions,
+        })
+
+
+class DelegationView(APIView):
+    """
+    Delegation management for out-of-office scenarios.
+    
+    POST /api/workflow/delegate/
+    GET  /api/workflow/delegate/?user_id=<uuid>
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get active delegations for a user."""
+        from apps.organization.models import UserOfficeAssignment
+        user_id = request.query_params.get('user_id', str(request.user.id))
+
+        # Find acting assignments for this user's positions
+        acting = UserOfficeAssignment.objects.filter(
+            assignment_type='acting',
+            is_active=True,
+        ).select_related('user', 'office')
+
+        # Filter to offices the queried user is assigned to
+        user_offices = UserOfficeAssignment.objects.filter(
+            user_id=user_id,
+            assignment_type='primary',
+            is_active=True,
+        ).values_list('office_id', flat=True)
+
+        delegations = acting.filter(office_id__in=user_offices)
+
+        results = []
+        for d in delegations:
+            results.append({
+                'id': str(d.id),
+                'delegate_user_id': str(d.user.id),
+                'delegate_user_name': d.user.name,
+                'office_id': str(d.office.id),
+                'office_name': d.office.name,
+                'start_date': d.start_date.isoformat() if d.start_date else None,
+                'end_date': d.end_date.isoformat() if d.end_date else None,
+            })
+
+        return Response(results)
+
+    def post(self, request):
+        """Create a delegation (acting assignment)."""
+        from django.contrib.auth import get_user_model
+        from apps.organization.models import UserOfficeAssignment
+        User = get_user_model()
+
+        delegate_user_id = request.data.get('delegate_user_id')
+        office_id = request.data.get('office_id')
+        end_date = request.data.get('end_date')
+
+        if not delegate_user_id or not office_id:
+            return Response({'error': 'delegate_user_id and office_id are required'}, status=400)
+
+        # Verify the requesting user has authority over this office
+        has_authority = UserOfficeAssignment.objects.filter(
+            user=request.user,
+            office_id=office_id,
+            is_active=True,
+        ).filter(
+            Q(is_office_head=True) | Q(designation__can_approve=True)
+        ).exists()
+
+        if not has_authority and not request.user.has_role('administrator'):
+            return Response({'error': 'You do not have authority to delegate for this office'}, status=403)
+
+        try:
+            delegate_user = User.objects.get(id=delegate_user_id)
+        except User.DoesNotExist:
+            return Response({'error': 'Delegate user not found'}, status=404)
+
+        assignment, created = UserOfficeAssignment.objects.get_or_create(
+            user=delegate_user,
+            office_id=office_id,
+            assignment_type='acting',
+            defaults={
+                'is_active': True,
+                'end_date': end_date,
+            }
+        )
+
+        if not created:
+            assignment.is_active = True
+            assignment.end_date = end_date
+            assignment.save()
+
+        return Response({
+            'id': str(assignment.id),
+            'message': f'Delegation created for {delegate_user.name}',
+        }, status=201 if created else 200)
+
+
 class SlaStatusView(APIView):
     """
     Get SLA status for a document.

@@ -10,12 +10,15 @@ import {
   UserX,
   Shield,
   Building,
+  Briefcase,
+  Crown,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserList, useCreateUser, useUpdateUser, useDeleteUser, useActivateUser, useDeactivateUser, useResetUserPassword } from '@/hooks/use-users';
-import { useOfficeList } from '@/hooks/use-organization';
+import { useOfficeList, useUserAssignments, useDesignations, useCreateAssignment, useDeleteAssignment } from '@/hooks/use-organization';
 import { useDebounce } from '@/hooks/use-debounce';
-import { User, UserRole, Permission } from '@/lib/types';
+import { User, UserRole, Permission, UserOfficeAssignment } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -58,6 +61,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -86,6 +96,13 @@ const modulePermissions = [
 
 const actionOptions = ['view', 'create', 'edit', 'delete', 'approve'] as const;
 
+const assignmentTypeOptions = [
+  { value: 'primary', label: 'Primary' },
+  { value: 'secondary', label: 'Secondary' },
+  { value: 'deputation', label: 'Deputation' },
+  { value: 'acting', label: 'Acting/Temporary' },
+];
+
 interface UserFormData {
   name: string;
   email: string;
@@ -108,6 +125,206 @@ const defaultFormData: UserFormData = {
   permissions: [],
 };
 
+// --- Assignment Detail Sheet ---
+function UserAssignmentSheet({
+  user,
+  open,
+  onClose,
+}: {
+  user: User | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { data: assignments, isLoading } = useUserAssignments(user?.id || '', open && !!user);
+  const { data: officesData } = useOfficeList({});
+  const { data: designationsData } = useDesignations();
+  const createAssignment = useCreateAssignment();
+  const deleteAssignment = useDeleteAssignment();
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newAssignment, setNewAssignment] = useState({
+    office: '',
+    designation: '',
+    assignmentType: 'secondary',
+    isOfficeHead: false,
+  });
+
+  const offices = officesData?.results || [];
+  const designations = designationsData?.results || [];
+
+  const handleAddAssignment = () => {
+    if (!user || !newAssignment.office) return;
+    createAssignment.mutate({
+      user: user.id,
+      office: newAssignment.office,
+      designation: newAssignment.designation || undefined,
+      assignment_type: newAssignment.assignmentType,
+      is_office_head: newAssignment.isOfficeHead,
+    }, {
+      onSuccess: () => {
+        setShowAddForm(false);
+        setNewAssignment({ office: '', designation: '', assignmentType: 'secondary', isOfficeHead: false });
+      },
+    });
+  };
+
+  const handleRemoveAssignment = (assignmentId: string) => {
+    deleteAssignment.mutate(assignmentId);
+  };
+
+  if (!user) return null;
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent className="sm:max-w-lg">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <Briefcase className="h-5 w-5" />
+            Office Assignments
+          </SheetTitle>
+          <SheetDescription>
+            Manage office assignments for <strong>{user.name}</strong>
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="mt-6 space-y-4">
+          {/* Current Assignments */}
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium">Current Assignments ({(assignments as UserOfficeAssignment[] | undefined)?.length || 0})</h4>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAddForm(!showAddForm)}
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Add
+            </Button>
+          </div>
+
+          {/* Add Assignment Form */}
+          {showAddForm && (
+            <Card>
+              <CardContent className="pt-4 space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-xs">Office *</Label>
+                  <Select value={newAssignment.office} onValueChange={(v) => setNewAssignment(prev => ({ ...prev, office: v }))}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="Select office" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {offices.map(o => (
+                        <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Designation</Label>
+                    <Select value={newAssignment.designation} onValueChange={(v) => setNewAssignment(prev => ({ ...prev, designation: v }))}>
+                      <SelectTrigger className="h-8 text-sm">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {designations.map(d => (
+                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Type</Label>
+                    <Select value={newAssignment.assignmentType} onValueChange={(v) => setNewAssignment(prev => ({ ...prev, assignmentType: v }))}>
+                      <SelectTrigger className="h-8 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {assignmentTypeOptions.map(t => (
+                          <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="isHead"
+                    checked={newAssignment.isOfficeHead}
+                    onCheckedChange={(c) => setNewAssignment(prev => ({ ...prev, isOfficeHead: c as boolean }))}
+                  />
+                  <Label htmlFor="isHead" className="text-xs cursor-pointer">Office Head</Label>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={handleAddAssignment} disabled={!newAssignment.office || createAssignment.isPending}>
+                    {createAssignment.isPending ? 'Adding...' : 'Add Assignment'}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setShowAddForm(false)}>Cancel</Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <ScrollArea className="h-[400px]">
+            {isLoading ? (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3">
+                    <Skeleton className="h-8 w-8 rounded" />
+                    <div className="space-y-1 flex-1">
+                      <Skeleton className="h-4 w-2/3" />
+                      <Skeleton className="h-3 w-1/3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (assignments as UserOfficeAssignment[] | undefined) && (assignments as UserOfficeAssignment[]).length > 0 ? (
+              <div className="space-y-2">
+                {(assignments as UserOfficeAssignment[]).map((assignment) => (
+                  <div
+                    key={assignment.id}
+                    className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 group"
+                  >
+                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Building className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium truncate">{assignment.officeName}</p>
+                        {assignment.isOfficeHead && <Crown className="h-3 w-3 text-amber-500" />}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs text-muted-foreground">{assignment.designationName || 'No designation'}</span>
+                        <Badge variant="outline" className="text-[10px] px-1 py-0">
+                          {assignment.assignmentType}
+                        </Badge>
+                      </div>
+                    </div>
+                    {assignment.assignmentType !== 'primary' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100 text-destructive"
+                        onClick={() => handleRemoveAssignment(assignment.id)}
+                        disabled={deleteAssignment.isPending}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No office assignments found
+              </p>
+            )}
+          </ScrollArea>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 export default function UserManagement() {
   const { hasRole, hasPermission } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
@@ -126,6 +343,10 @@ export default function UserManagement() {
   
   const [formData, setFormData] = useState<UserFormData>(defaultFormData);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; user: User | null }>({
+    open: false,
+    user: null,
+  });
+  const [assignmentSheet, setAssignmentSheet] = useState<{ open: boolean; user: User | null }>({
     open: false,
     user: null,
   });
@@ -480,6 +701,10 @@ export default function UserManagement() {
                               <Edit className="mr-2 h-4 w-4" />
                               Edit User
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setAssignmentSheet({ open: true, user })}>
+                              <Briefcase className="mr-2 h-4 w-4" />
+                              Office Assignments
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleResetPassword(user)}>
                               <KeyRound className="mr-2 h-4 w-4" />
                               Reset Password
@@ -598,7 +823,7 @@ export default function UserManagement() {
                     </Select>
                   </div>
                   <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="office">Office *</Label>
+                    <Label htmlFor="office">Primary Office *</Label>
                     <Select
                       value={formData.officeId}
                       onValueChange={(value) => setFormData({ ...formData, officeId: value })}
@@ -714,6 +939,13 @@ export default function UserManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* User Assignment Sheet */}
+      <UserAssignmentSheet
+        user={assignmentSheet.user}
+        open={assignmentSheet.open}
+        onClose={() => setAssignmentSheet({ open: false, user: null })}
+      />
     </div>
   );
 }
