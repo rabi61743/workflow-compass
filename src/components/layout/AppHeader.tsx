@@ -15,6 +15,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Bell, LogOut, User, Settings } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { ThemeToggle } from './ThemeToggle';
 
 export function AppHeader() {
   const { user, logout } = useAuth();
@@ -68,6 +69,7 @@ export function AppHeader() {
 
       {/* Right side actions */}
       <div className="flex items-center gap-2">
+        <ThemeToggle />
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { AppSidebar } from './AppSidebar';
 import { AppHeader } from './AppHeader';
+import { DemoModeBanner } from './DemoModeBanner';
 import { Loader2 } from 'lucide-react';
 
 export function AppLayout() {
@@ -25,6 +26,7 @@ export function AppLayout() {
       <div className="flex min-h-screen w-full">
         <AppSidebar />
         <SidebarInset className="flex flex-col flex-1">
+          <DemoModeBanner />
           <AppHeader />
           <main className="flex-1 p-4 lg:p-6">
             <Outlet />
