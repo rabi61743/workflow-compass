@@ -105,3 +105,38 @@ export function useDelegateTask() {
     },
   });
 }
+
+// Get next approver suggestions based on hierarchy
+export function useNextApprover(userId?: string, enabled = true) {
+  return useQuery({
+    queryKey: [...queryKeys.workflow.all, 'next-approver', userId],
+    queryFn: () => workflowApi.getNextApprover(userId),
+    enabled,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+// Get active delegations
+export function useDelegations(userId?: string, enabled = true) {
+  return useQuery({
+    queryKey: [...queryKeys.workflow.all, 'delegations', userId],
+    queryFn: () => workflowApi.getDelegations(userId),
+    enabled,
+  });
+}
+
+// Create delegation
+export function useCreateDelegation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: workflowApi.createDelegation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflow.all });
+      toast.success('Delegation created successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to create delegation');
+    },
+  });
+}

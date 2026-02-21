@@ -108,6 +108,56 @@ export const workflowApi = {
     }>(`/workflow/sla-status/${documentType}/${documentId}/`);
     return response.data;
   },
+
+  // === Hierarchy-based routing ===
+  async getNextApprover(userId?: string): Promise<{
+    user_id: string;
+    user_name: string;
+    suggestions: ApproverSuggestion[];
+  }> {
+    const params = userId ? `?user_id=${userId}` : '';
+    const response = await apiClient.get<{
+      user_id: string;
+      user_name: string;
+      suggestions: ApproverSuggestion[];
+    }>(`/workflow/next-approver/${params}`);
+    return response.data;
+  },
+
+  async getDelegations(userId?: string): Promise<DelegationInfo[]> {
+    const params = userId ? `?user_id=${userId}` : '';
+    const response = await apiClient.get<DelegationInfo[]>(`/workflow/delegate/${params}`);
+    return response.data;
+  },
+
+  async createDelegation(data: {
+    delegate_user_id: string;
+    office_id: string;
+    end_date?: string;
+  }): Promise<{ id: string; message: string }> {
+    const response = await apiClient.post<{ id: string; message: string }>('/workflow/delegate/', data);
+    return response.data;
+  },
 };
+
+export interface ApproverSuggestion {
+  id: string;
+  name: string;
+  email: string;
+  source: 'reporting_structure' | 'office_head' | 'parent_office_head' | 'designation_approver';
+  is_primary?: boolean;
+  office_name?: string;
+  designation?: string;
+}
+
+export interface DelegationInfo {
+  id: string;
+  delegate_user_id: string;
+  delegate_user_name: string;
+  office_id: string;
+  office_name: string;
+  start_date: string | null;
+  end_date: string | null;
+}
 
 export type { TaskItem, WorkflowStats };
