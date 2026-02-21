@@ -53,12 +53,20 @@ export {
   useOfficeHierarchy,
   useOfficeTypes,
   useOfficeStaff,
+  useOfficeMembers,
+  useRecipientSearch,
+  useUserAssignments,
+  useReportingChain,
+  useDesignations,
   useCreateOffice,
   useUpdateOffice,
   useDeleteOffice,
   useActivateOffice,
   useDeactivateOffice,
   useAssignOfficeHead,
+  useCreateAssignment,
+  useDeleteAssignment,
+  useCreateDesignation,
 } from './use-organization';
 
 // Workflow hooks

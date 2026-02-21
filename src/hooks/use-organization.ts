@@ -34,8 +34,8 @@ export function useOffice(id: string, enabled = true) {
 export function useOfficeHierarchy() {
   return useQuery({
     queryKey: queryKeys.organization.hierarchy(),
-    queryFn: () => organizationApi.getHierarchy(),
-    staleTime: 1000 * 60 * 10, // 10 minutes - hierarchy doesn't change often
+    queryFn: () => organizationApi.getTree(),
+    staleTime: 1000 * 60 * 10,
   });
 }
 
@@ -44,16 +44,57 @@ export function useOfficeTypes() {
   return useQuery({
     queryKey: queryKeys.organization.types(),
     queryFn: () => organizationApi.getOfficeTypes(),
-    staleTime: 1000 * 60 * 60, // 1 hour
+    staleTime: 1000 * 60 * 60,
   });
 }
 
-// Get staff in an office
-export function useOfficeStaff(officeId: string, enabled = true) {
+// Get members in an office
+export function useOfficeMembers(officeId: string, includeChildren = false, enabled = true) {
   return useQuery({
-    queryKey: [...queryKeys.organization.detail(officeId), 'staff'],
-    queryFn: () => organizationApi.getStaff(officeId),
+    queryKey: [...queryKeys.organization.detail(officeId), 'members', includeChildren],
+    queryFn: () => organizationApi.getMembers(officeId, includeChildren),
     enabled: !!officeId && enabled,
+  });
+}
+
+// Legacy alias
+export function useOfficeStaff(officeId: string, enabled = true) {
+  return useOfficeMembers(officeId, false, enabled);
+}
+
+// Search recipients
+export function useRecipientSearch(params: { q?: string; office_id?: string; include_children?: boolean; type?: 'user' | 'office' | 'all' }, enabled = true) {
+  return useQuery({
+    queryKey: [...queryKeys.organization.all, 'recipients', params],
+    queryFn: () => organizationApi.searchRecipients(params),
+    enabled: enabled && !!(params.q || params.office_id),
+    staleTime: 1000 * 30,
+  });
+}
+
+// Get user assignments
+export function useUserAssignments(userId: string, enabled = true) {
+  return useQuery({
+    queryKey: [...queryKeys.organization.all, 'assignments', userId],
+    queryFn: () => organizationApi.getAssignmentsByUser(userId),
+    enabled: !!userId && enabled,
+  });
+}
+
+// Get reporting chain
+export function useReportingChain(userId: string, enabled = true) {
+  return useQuery({
+    queryKey: [...queryKeys.organization.all, 'reporting-chain', userId],
+    queryFn: () => organizationApi.getReportingChain(userId),
+    enabled: !!userId && enabled,
+  });
+}
+
+// Designations
+export function useDesignations(params: { office?: string; is_global?: boolean } = {}) {
+  return useQuery({
+    queryKey: [...queryKeys.organization.all, 'designations', params],
+    queryFn: () => organizationApi.listDesignations(params),
   });
 }
 
@@ -157,6 +198,54 @@ export function useAssignOfficeHead() {
     },
     onError: (error: any) => {
       toast.error(error.message || 'Failed to assign office head');
+    },
+  });
+}
+
+// Create assignment
+export function useCreateAssignment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: organizationApi.createAssignment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.organization.all });
+      toast.success('Assignment created');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to create assignment');
+    },
+  });
+}
+
+// Delete assignment
+export function useDeleteAssignment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: organizationApi.deleteAssignment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.organization.all });
+      toast.success('Assignment removed');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to remove assignment');
+    },
+  });
+}
+
+// Create designation
+export function useCreateDesignation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: organizationApi.createDesignation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.organization.all });
+      toast.success('Designation created');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to create designation');
     },
   });
 }
