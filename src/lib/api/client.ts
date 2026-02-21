@@ -1,5 +1,7 @@
 // API Client configuration for Django backend
 // Configure via VITE_API_URL environment variable or defaults to localhost
+import { getDemoResponse } from '../demo-interceptor';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 interface ApiResponse<T> {
@@ -84,40 +86,51 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.accessToken}`;
     }
 
-    let response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    try {
+      let response = await fetch(`${this.baseUrl}${endpoint}`, {
+        ...options,
+        headers,
+      });
 
-    // Handle 401 - try token refresh
-    if (response.status === 401 && this.refreshToken) {
-      const refreshed = await this.refreshAccessToken();
-      if (refreshed) {
-        headers['Authorization'] = `Bearer ${this.accessToken}`;
-        response = await fetch(`${this.baseUrl}${endpoint}`, {
-          ...options,
-          headers,
-        });
+      // Handle 401 - try token refresh
+      if (response.status === 401 && this.refreshToken) {
+        const refreshed = await this.refreshAccessToken();
+        if (refreshed) {
+          headers['Authorization'] = `Bearer ${this.accessToken}`;
+          response = await fetch(`${this.baseUrl}${endpoint}`, {
+            ...options,
+            headers,
+          });
+        }
       }
-    }
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const error: ApiError = {
-        message: errorData.detail || errorData.message || 'An error occurred',
-        status: response.status,
-        errors: errorData.errors,
-      };
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const error: ApiError = {
+          message: errorData.detail || errorData.message || 'An error occurred',
+          status: response.status,
+          errors: errorData.errors,
+        };
+        throw error;
+      }
+
+      // Handle 204 No Content
+      if (response.status === 204) {
+        return { data: null as T, status: 204 };
+      }
+
+      const data = await response.json();
+      return { data, status: response.status };
+    } catch (error: any) {
+      // Demo mode fallback: if fetch fails (backend unreachable), return mock data
+      if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
+        const demoData = getDemoResponse(endpoint, options.method || 'GET');
+        if (demoData !== null) {
+          return { data: demoData as T, status: 200 };
+        }
+      }
       throw error;
     }
-
-    // Handle 204 No Content
-    if (response.status === 204) {
-      return { data: null as T, status: 204 };
-    }
-
-    const data = await response.json();
-    return { data, status: response.status };
   }
 
   async get<T>(endpoint: string): Promise<ApiResponse<T>> {
